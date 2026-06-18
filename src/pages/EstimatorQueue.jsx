@@ -124,6 +124,18 @@ export default function EstimatorQueue() {
                     {r.print_spec && <div>🖨️ {r.print_spec}</div>}
                     {r.finishing_spec && <div>✂️ {r.finishing_spec}</div>}
                     {r.notes && <div style={{ color:'#9ca3af', fontStyle:'italic' }}>💬 {r.notes}</div>}
+                    {r.reference_image && (
+                      <div style={{ marginTop:8 }}>
+                        <img
+                          src={r.reference_image}
+                          alt="referensi"
+                          style={{ maxWidth:160, maxHeight:120, borderRadius:6, border:'1px solid #e5e7eb', cursor:'pointer', objectFit:'cover' }}
+                          onClick={() => window.open(r.reference_image, '_blank')}
+                          title="Klik untuk lihat ukuran penuh"
+                        />
+                        <div style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>🖼️ klik untuk perbesar</div>
+                      </div>
+                    )}
                   </div>
                 </td>
                 <td style={s.td}>{r.quantity?.toLocaleString('id-ID')}</td>

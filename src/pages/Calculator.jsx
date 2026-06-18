@@ -259,11 +259,26 @@ export default function Calculator() {
             </div>
           ))}
         </div>
-        {request.notes && (
-          <div style={{ marginTop:12, padding:'8px 12px', background:'#fffbeb', borderRadius:6, fontSize:13, color:'#92400e' }}>
-            💬 {request.notes}
-          </div>
-        )}
+        <div style={{ marginTop:12, display:'flex', gap:16, flexWrap:'wrap' }}>
+          {request.notes && (
+            <div style={{ flex:1, minWidth:200, padding:'8px 12px', background:'#fffbeb', borderRadius:6, fontSize:13, color:'#92400e' }}>
+              💬 {request.notes}
+            </div>
+          )}
+          {request.reference_image && (
+            <div style={{ textAlign:'center' }}>
+              <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>🖼️ Gambar Referensi</div>
+              <img
+                src={request.reference_image}
+                alt="referensi"
+                style={{ maxHeight:140, maxWidth:220, borderRadius:8, border:'1px solid #e5e7eb', cursor:'pointer', objectFit:'cover' }}
+                onClick={() => window.open(request.reference_image, '_blank')}
+                title="Klik untuk lihat ukuran penuh"
+              />
+              <div style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>klik untuk perbesar</div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* 1. Material Cost */}
