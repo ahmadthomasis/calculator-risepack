@@ -1,17 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../lib/AuthContext'
 
-const s = {
-  wrap:  { minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'#f0f2f5' },
-  card:  { background:'#fff', borderRadius:12, padding:'40px 36px', width:360, boxShadow:'0 2px 16px rgba(0,0,0,0.1)' },
-  logo:  { textAlign:'center', marginBottom:28 },
-  title: { fontSize:22, fontWeight:600, color:'#1a1a1a', marginBottom:4 },
-  sub:   { fontSize:13, color:'#888' },
-  label: { display:'block', fontSize:13, fontWeight:500, color:'#444', marginBottom:6, marginTop:18 },
-  input: { width:'100%', padding:'10px 12px', border:'1px solid #ddd', borderRadius:8, fontSize:14, outline:'none' },
-  btn:   { width:'100%', marginTop:24, padding:'11px', background:'#2563eb', color:'#fff', border:'none', borderRadius:8, fontSize:15, fontWeight:500, cursor:'pointer' },
-  err:   { marginTop:14, padding:'10px 12px', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, color:'#dc2626', fontSize:13 },
-}
+const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
 
 export default function LoginPage() {
   const { signIn } = useAuth()
@@ -30,25 +20,65 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={s.wrap}>
-      <div style={s.card}>
-        <div style={s.logo}>
-          <div style={{ fontSize:32, marginBottom:8 }}>📦</div>
-          <div style={s.title}>Risepack Calculator</div>
-          <div style={s.sub}>Sistem kalkulasi harga packaging</div>
+    <div style={{ minHeight:'100vh', background:`linear-gradient(135deg, ${C.dark} 0%, #4A2820 100%)`, display:'flex', alignItems:'center', justifyContent:'center' }}>
+      <div style={{ width:380 }}>
+        {/* Logo */}
+        <div style={{ textAlign:'center', marginBottom:32 }}>
+          <div style={{ display:'inline-flex', alignItems:'center', gap:4, marginBottom:8 }}>
+            <span style={{ fontSize:40, fontWeight:900, color:'#fff', letterSpacing:'-1px' }}>Rise</span>
+            <span style={{ fontSize:40, fontWeight:900, color:C.orange, letterSpacing:'-1px' }}>pack</span>
+          </div>
+          <div style={{ fontSize:14, color:'rgba(255,255,255,0.5)', letterSpacing:'2px', textTransform:'uppercase' }}>
+            Price Calculator
+          </div>
         </div>
-        <form onSubmit={handleSubmit}>
-          <label style={s.label}>Email</label>
-          <input style={s.input} type="email" value={email}
-            onChange={e => setEmail(e.target.value)} placeholder="nama@risepack.com" required />
-          <label style={s.label}>Password</label>
-          <input style={s.input} type="password" value={password}
-            onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
-          {error && <div style={s.err}>{error}</div>}
-          <button style={s.btn} type="submit" disabled={loading}>
-            {loading ? 'Masuk...' : 'Masuk'}
-          </button>
-        </form>
+
+        {/* Card */}
+        <div style={{ background:'#fff', borderRadius:16, padding:'36px 32px', boxShadow:'0 20px 60px rgba(0,0,0,0.3)' }}>
+          <div style={{ fontSize:18, fontWeight:600, color:C.dark, marginBottom:4 }}>Masuk ke Akun</div>
+          <div style={{ fontSize:13, color:'#9ca3af', marginBottom:24 }}>Sistem kalkulasi harga packaging</div>
+
+          <form onSubmit={handleSubmit}>
+            <div style={{ marginBottom:16 }}>
+              <label style={{ display:'block', fontSize:13, fontWeight:500, color:C.brown, marginBottom:6 }}>Email</label>
+              <input style={{
+                width:'100%', padding:'10px 12px',
+                border:`1.5px solid ${C.border}`, borderRadius:8,
+                fontSize:14, outline:'none', boxSizing:'border-box', color:C.dark
+              }} type="email" value={email}
+                onChange={e => setEmail(e.target.value)} placeholder="nama@risepack.id" required />
+            </div>
+            <div style={{ marginBottom:8 }}>
+              <label style={{ display:'block', fontSize:13, fontWeight:500, color:C.brown, marginBottom:6 }}>Password</label>
+              <input style={{
+                width:'100%', padding:'10px 12px',
+                border:`1.5px solid ${C.border}`, borderRadius:8,
+                fontSize:14, outline:'none', boxSizing:'border-box', color:C.dark
+              }} type="password" value={password}
+                onChange={e => setPassword(e.target.value)} placeholder="••••••••" required />
+            </div>
+
+            {error && (
+              <div style={{ margin:'12px 0', padding:'10px 12px', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, color:'#dc2626', fontSize:13 }}>
+                {error}
+              </div>
+            )}
+
+            <button style={{
+              width:'100%', marginTop:20, padding:'12px',
+              background: loading ? '#ccc' : C.orange,
+              color:'#fff', border:'none', borderRadius:8,
+              fontSize:15, fontWeight:600, cursor: loading ? 'not-allowed' : 'pointer',
+              transition:'background 0.2s'
+            }} type="submit" disabled={loading}>
+              {loading ? 'Masuk...' : 'Masuk'}
+            </button>
+          </form>
+        </div>
+
+        <div style={{ textAlign:'center', marginTop:20, fontSize:12, color:'rgba(255,255,255,0.3)' }}>
+          © 2026 Risepack · Sistem Internal
+        </div>
       </div>
     </div>
   )
