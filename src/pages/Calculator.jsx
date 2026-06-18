@@ -28,7 +28,7 @@ const s = {
 }
 
 // ── Row factories ─────────────────────────────────────────────
-const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
+const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', harga_kg:0, luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
 const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:0, insheet:0, harga_per_lembar:0 })
 const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:0, insheet:0, harga_per_cm2:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1 })
@@ -111,13 +111,11 @@ export default function Calculator() {
     const normGsm = String(gsm).trim()
     const normName = materialName.toLowerCase().trim()
     const normPlano = String(plano).trim()
-    console.log('[lookup]', { normName, normPlano, normGsm, dbCount: dbMaterials.length })
     const match = dbMaterials.find(m => {
       const mName = m.name.toLowerCase().trim()
       const mSpec = (m.spec || '').trim()
       const mGsm  = normalizeGsmLocal(m.notes)
       const ok = mName === normName && mSpec === normPlano && mGsm === normGsm
-      if (mName === normName) console.log('[candidate]', { mName, mSpec, mGsm, ok })
       return ok
     })
     return match ? match.price : 0
@@ -154,7 +152,10 @@ export default function Calculator() {
     const insheet      = num(r.insheet)
     const quantity     = num(r.quantity)
     const mata         = num(r.mata) || 1
-    const harga        = lookupMaterialPrice(r.material, r.plano, r.gsm)
+    // Harga/lembar: kalau custom plano → hitung dari harga/kg, kalau tidak → dari DB
+    const harga = r.plano === 'custom' && num(r.plano_w) > 0 && num(r.plano_h) > 0 && num(r.harga_kg) > 0
+      ? (num(r.plano_w) * num(r.plano_h) * num(r.gsm) * num(r.harga_kg)) / 20000 / 500
+      : lookupMaterialPrice(r.material, r.plano, r.gsm)
     // Rumus: ((qty + insheet) / plano_get / mata * harga) / qty
     const harga_per_pcs = (planoGet > 0 && quantity > 0 && insheet > 0)
       ? ((quantity + insheet) / planoGet / mata * harga) / quantity
@@ -303,12 +304,13 @@ export default function Calculator() {
                   </td>
                   <td style={s.td}>
                     {row.plano === 'custom' ? (
-                      <div style={{ display:'flex', gap:4 }}>
+                      <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
                         <select style={{ ...s.select, width:80 }} value={row.plano} onChange={e => updater(setMaterial)(i,'plano',e.target.value)}>
                           {PLANO_OPTIONS.map(p => <option key={p}>{p}</option>)}
                         </select>
-                        <input style={{ ...s.input, width:55 }} placeholder="W" value={row.plano_w} onChange={e => updater(setMaterial)(i,'plano_w',e.target.value)} />
-                        <input style={{ ...s.input, width:55 }} placeholder="H" value={row.plano_h} onChange={e => updater(setMaterial)(i,'plano_h',e.target.value)} />
+                        <input style={{ ...s.input, width:50 }} placeholder="P(cm)" type="number" value={row.plano_w} onChange={e => updater(setMaterial)(i,'plano_w',e.target.value)} />
+                        <input style={{ ...s.input, width:50 }} placeholder="L(cm)" type="number" value={row.plano_h} onChange={e => updater(setMaterial)(i,'plano_h',e.target.value)} />
+                        <input style={{ ...s.input, width:80 }} placeholder="Rp/kg" type="number" value={row.harga_kg||''} onChange={e => updater(setMaterial)(i,'harga_kg',e.target.value)} />
                       </div>
                     ) : (
                       <select style={{ ...s.select, width:110 }} value={row.plano}
