@@ -154,11 +154,10 @@ export default function Calculator() {
     const insheet      = num(r.insheet)
     const quantity     = num(r.quantity)
     const mata         = num(r.mata) || 1
-    const qty_efektif  = quantity * mata
     const harga        = lookupMaterialPrice(r.material, r.plano, r.gsm)
-    // Rumus: ((qty_efektif + insheet) / plano_get * harga_lembar) / qty_efektif
-    const harga_per_pcs = (planoGet > 0 && qty_efektif > 0 && insheet > 0)
-      ? ((qty_efektif + insheet) / planoGet * harga) / qty_efektif
+    // Rumus: ((qty + insheet) / plano_get / mata * harga) / qty
+    const harga_per_pcs = (planoGet > 0 && quantity > 0 && insheet > 0)
+      ? ((quantity + insheet) / planoGet / mata * harga) / quantity
       : 0
     const subtotal = harga_per_pcs * quantity
     return { ...r, harga_lembar: harga, harga_per_pcs, subtotal }
