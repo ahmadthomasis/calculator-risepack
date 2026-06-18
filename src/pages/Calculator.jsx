@@ -298,7 +298,7 @@ export default function Calculator() {
                         onChange={e => {
                           const newGsm = e.target.value
                           const opts = planoOptions(row.material, newGsm)
-                          const newPlano = opts.length > 0 ? opts[0] : '79x109'
+                          const newPlano = row.plano === 'custom' ? 'custom' : (opts.length > 0 ? opts[0] : '79x109')
                           setMaterial(p => p.map((r,idx) => idx===i ? {...r, gsm:newGsm, plano:newPlano} : r))
                         }}>
                         <option value="">GSM</option>
