@@ -28,7 +28,7 @@ const s = {
 }
 
 // ── Row factories ─────────────────────────────────────────────
-const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', luas_permukaan:0, plano_get:0, quantity:0, harga_lembar:0 })
+const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
 const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:0, insheet:0, harga_per_lembar:0 })
 const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:0, insheet:0, harga_per_cm2:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1 })
@@ -135,20 +135,16 @@ export default function Calculator() {
 
   // ── Kalkulasi per row ─────────────────────────────────────
   const calcMaterial = useCallback(() => material.map(r => {
-    const planoW = r.plano === 'custom' ? num(r.plano_w) : num(r.plano.split('x')[0])
-    const planoH = r.plano === 'custom' ? num(r.plano_h) : num(r.plano.split('x')[1])
-    const luasPlano  = planoW * planoH  // cm²
-    const luasProd   = num(r.luas_permukaan) * 10000 // m² → cm²
-    // Plano get: pakai manual jika diisi, kalau tidak hitung otomatis
-    const planoGetAuto = luasProd > 0 ? Math.floor(luasPlano / luasProd) : 0
-    const planoGet     = num(r.plano_get) > 0 ? num(r.plano_get) : planoGetAuto
-    // Insheet: pakai manual jika diisi, kalau tidak hitung otomatis
-    const insheetAuto  = planoGet > 0 ? Math.ceil(num(r.quantity) / planoGet) : 0
-    const insheet      = num(r.insheet) > 0 ? num(r.insheet) : insheetAuto
-    // Harga: selalu dari database berdasarkan material + plano + gsm
-    const harga    = lookupMaterialPrice(r.material, r.plano, r.gsm)
-    const subtotal = insheet * harga
-    return { ...r, plano_get: planoGet, insheet, harga_lembar: harga, subtotal }
+    const planoGet     = num(r.plano_get)
+    const insheet      = num(r.insheet)
+    const quantity     = num(r.quantity)
+    const harga        = lookupMaterialPrice(r.material, r.plano, r.gsm)
+    // Rumus Excel: =((plano_get + insheet) / insheet * harga_lembar) / plano_get
+    const harga_per_pcs = (planoGet > 0 && insheet > 0)
+      ? ((planoGet + insheet) / insheet * harga) / planoGet
+      : 0
+    const subtotal = harga_per_pcs * quantity
+    return { ...r, harga_lembar: harga, harga_per_pcs, subtotal }
   }), [material, dbMaterials])
 
   const calcCetak = useCallback(() => cetak.map(r => {
@@ -261,7 +257,7 @@ export default function Calculator() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:900 }}>
             <thead><tr>
-              {['Nama','Material','GSM','Plano','Luas Permukaan (m²)','Plano Get','Qty','Insheet','Harga/Lembar','Subtotal',''].map(h => (
+              {['Nama','Material','GSM','Plano','Plano Get','Qty','Insheet','Harga/Lembar','Harga/pcs','Subtotal',''].map(h => (
                 <th key={h} style={s.th}>{h}</th>
               ))}
             </tr></thead>
@@ -300,11 +296,11 @@ export default function Calculator() {
                       </select>
                     )}
                   </td>
-                  <td style={s.td}><input style={{ ...s.input, width:100 }} type="number" step="0.001" value={row.luas_permukaan} onChange={e => updater(setMaterial)(i,'luas_permukaan',e.target.value)} placeholder="0.065" /></td>
-                  <td style={s.td}><input style={{ ...s.input, width:70 }} type="number" value={row.plano_get} onChange={e => updater(setMaterial)(i,'plano_get',e.target.value)} placeholder="auto" /></td>
+                  <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.plano_get} onChange={e => updater(setMaterial)(i,'plano_get',e.target.value)} placeholder="1" /></td>
                   <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.quantity} onChange={e => updater(setMaterial)(i,'quantity',e.target.value)} /></td>
-                  <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setMaterial)(i,'insheet',e.target.value)} placeholder="auto" /></td>
-                  <td style={s.td}><div style={{ ...s.calc, color: row.harga_lembar > 0 ? '#16a34a' : '#9ca3af' }}>{row.harga_lembar > 0 ? idr(row.harga_lembar) : 'auto'}</div></td>
+                  <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setMaterial)(i,'insheet',e.target.value)} placeholder="500" /></td>
+                  <td style={s.td}><div style={{ ...s.calc, color: row.harga_lembar > 0 ? '#16a34a' : '#9ca3af' }}>{row.harga_lembar > 0 ? idr(row.harga_lembar) : '—'}</div></td>
+                  <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
                   <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                   <td style={s.td}><button style={s.delBtn} onClick={() => setMaterial(p => p.filter((_,idx)=>idx!==i))}>✕</button></td>
                 </tr>
