@@ -283,14 +283,19 @@ export default function Calculator() {
                   <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setMaterial)(i,'nama',e.target.value)} placeholder="cover" /></td>
                   <td style={s.td}>
                     <select style={{ ...s.select, width:160 }} value={row.material}
-                      onChange={e => updater(setMaterial)(i,'material',e.target.value)}>
+                      onChange={e => setMaterial(p => p.map((r,idx) => idx===i ? {...r, material:e.target.value, gsm:'', plano:'79x109'} : r))}>
                       <option value="">-- pilih --</option>
                       {materialNames.map(n => <option key={n}>{n}</option>)}
                     </select>
                   </td>
                   <td style={s.td}>
                     <select style={{ ...s.select, width:80 }} value={row.gsm}
-                      onChange={e => updater(setMaterial)(i,'gsm',e.target.value)}>
+                      onChange={e => {
+                        const newGsm = e.target.value
+                        const opts = planoOptions(row.material, newGsm)
+                        const newPlano = opts.length > 0 ? opts[0] : '79x109'
+                        setMaterial(p => p.map((r,idx) => idx===i ? {...r, gsm:newGsm, plano:newPlano} : r))
+                      }}>
                       <option value="">GSM</option>
                       {gsmOptions(row.material).map(g => <option key={g}>{g}</option>)}
                     </select>
