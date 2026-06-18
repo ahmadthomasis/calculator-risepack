@@ -97,9 +97,9 @@ export default function SalesDashboard() {
     setUploading(true)
     const ext  = file.name.split('.').pop()
     const path = `requests/${Date.now()}.${ext}`
-    const { error } = await supabase.storage.from('request-images').upload(path, file)
+    const { error } = await supabase.storage.from('request - image').upload(path, file)
     if (!error) {
-      const { data: { publicUrl } } = supabase.storage.from('request-images').getPublicUrl(path)
+      const { data: { publicUrl } } = supabase.storage.from('request - image').getPublicUrl(path)
       setForm(f => ({ ...f, image_url: publicUrl }))
       setPreviewUrl(publicUrl)
     } else {
