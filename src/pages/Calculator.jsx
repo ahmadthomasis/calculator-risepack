@@ -87,7 +87,11 @@ export default function Calculator() {
     const { data: quot } = await supabase.from('quotations').select('*')
       .eq('request_id', requestId).eq('is_active', true).single()
     if (quot) {
-      setMaterial(quot.material_cost || [])
+      const normGsm = (rows) => (rows || []).map(r => ({
+        ...r,
+        gsm: String(r.gsm || '').toLowerCase().replace('gsm','').trim()
+      }))
+      setMaterial(normGsm(quot.material_cost))
       setCetak(quot.cetak_cost || [])
       setEmboss(quot.emboss_laminasi || [])
       setMatProses(quot.material_proses || [])
