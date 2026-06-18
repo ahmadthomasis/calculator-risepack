@@ -137,12 +137,17 @@ export default function Calculator() {
   const calcMaterial = useCallback(() => material.map(r => {
     const planoW = r.plano === 'custom' ? num(r.plano_w) : num(r.plano.split('x')[0])
     const planoH = r.plano === 'custom' ? num(r.plano_h) : num(r.plano.split('x')[1])
-    const luasPlano = (planoW * planoH)  // cm²
-    const luasProd  = num(r.luas_permukaan) * 10000 // m² → cm²
-    const planoGet  = luasProd > 0 ? Math.floor(luasPlano / luasProd) : num(r.plano_get)
-    const insheet   = planoGet > 0 ? Math.ceil(num(r.quantity) / planoGet) : 0
-    const harga     = r.harga_lembar > 0 ? num(r.harga_lembar) : lookupMaterialPrice(r.material, r.plano, r.gsm)
-    const subtotal  = insheet * harga
+    const luasPlano  = planoW * planoH  // cm²
+    const luasProd   = num(r.luas_permukaan) * 10000 // m² → cm²
+    // Plano get: pakai manual jika diisi, kalau tidak hitung otomatis
+    const planoGetAuto = luasProd > 0 ? Math.floor(luasPlano / luasProd) : 0
+    const planoGet     = num(r.plano_get) > 0 ? num(r.plano_get) : planoGetAuto
+    // Insheet: pakai manual jika diisi, kalau tidak hitung otomatis
+    const insheetAuto  = planoGet > 0 ? Math.ceil(num(r.quantity) / planoGet) : 0
+    const insheet      = num(r.insheet) > 0 ? num(r.insheet) : insheetAuto
+    // Harga: selalu dari database berdasarkan material + plano + gsm
+    const harga    = lookupMaterialPrice(r.material, r.plano, r.gsm)
+    const subtotal = insheet * harga
     return { ...r, plano_get: planoGet, insheet, harga_lembar: harga, subtotal }
   }), [material, dbMaterials])
 
@@ -256,7 +261,7 @@ export default function Calculator() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:900 }}>
             <thead><tr>
-              {['Nama','Material','GSM','Plano','Luas Produk (m²)','Plano Get','Qty','Insheet','Harga/Lembar','Subtotal',''].map(h => (
+              {['Nama','Material','GSM','Plano','Luas Permukaan (m²)','Plano Get','Qty','Insheet','Harga/Lembar','Subtotal',''].map(h => (
                 <th key={h} style={s.th}>{h}</th>
               ))}
             </tr></thead>
@@ -296,9 +301,9 @@ export default function Calculator() {
                     )}
                   </td>
                   <td style={s.td}><input style={{ ...s.input, width:100 }} type="number" step="0.001" value={row.luas_permukaan} onChange={e => updater(setMaterial)(i,'luas_permukaan',e.target.value)} placeholder="0.065" /></td>
-                  <td style={s.td}><div style={s.calc}>{row.plano_get}</div></td>
+                  <td style={s.td}><input style={{ ...s.input, width:70 }} type="number" value={row.plano_get} onChange={e => updater(setMaterial)(i,'plano_get',e.target.value)} placeholder="auto" /></td>
                   <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.quantity} onChange={e => updater(setMaterial)(i,'quantity',e.target.value)} /></td>
-                  <td style={s.td}><div style={s.calc}>{fmt(row.insheet)}</div></td>
+                  <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setMaterial)(i,'insheet',e.target.value)} placeholder="auto" /></td>
                   <td style={s.td}><div style={{ ...s.calc, color: row.harga_lembar > 0 ? '#16a34a' : '#9ca3af' }}>{row.harga_lembar > 0 ? idr(row.harga_lembar) : 'auto'}</div></td>
                   <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                   <td style={s.td}><button style={s.delBtn} onClick={() => setMaterial(p => p.filter((_,idx)=>idx!==i))}>✕</button></td>
