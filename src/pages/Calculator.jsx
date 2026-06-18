@@ -291,16 +291,20 @@ export default function Calculator() {
                     </select>
                   </td>
                   <td style={s.td}>
-                    <select style={{ ...s.select, width:80 }} value={row.gsm}
-                      onChange={e => {
-                        const newGsm = e.target.value
-                        const opts = planoOptions(row.material, newGsm)
-                        const newPlano = opts.length > 0 ? opts[0] : '79x109'
-                        setMaterial(p => p.map((r,idx) => idx===i ? {...r, gsm:newGsm, plano:newPlano} : r))
-                      }}>
-                      <option value="">GSM</option>
-                      {gsmOptions(row.material).map(g => <option key={g}>{g}</option>)}
-                    </select>
+                    {row.plano === 'custom' ? (
+                      <input style={{ ...s.input, width:80 }} type="number" value={row.gsm} onChange={e => updater(setMaterial)(i,'gsm',e.target.value)} placeholder="GSM" />
+                    ) : (
+                      <select style={{ ...s.select, width:80 }} value={row.gsm}
+                        onChange={e => {
+                          const newGsm = e.target.value
+                          const opts = planoOptions(row.material, newGsm)
+                          const newPlano = opts.length > 0 ? opts[0] : '79x109'
+                          setMaterial(p => p.map((r,idx) => idx===i ? {...r, gsm:newGsm, plano:newPlano} : r))
+                        }}>
+                        <option value="">GSM</option>
+                        {gsmOptions(row.material).map(g => <option key={g}>{g}</option>)}
+                      </select>
+                    )}
                   </td>
                   <td style={s.td}>
                     {row.plano === 'custom' ? (
