@@ -101,10 +101,11 @@ export default function Calculator() {
   // ── Lookup harga material dari DB ─────────────────────────
   function lookupMaterialPrice(materialName, plano, gsm) {
     if (!materialName || !plano || !gsm) return 0
+    const normalizeGsmLocal = (notes) => (notes || '').toLowerCase().replace('gsm','').trim()
     const match = dbMaterials.find(m =>
-      m.name.toLowerCase() === materialName.toLowerCase() &&
-      m.spec === plano &&
-      m.notes === gsm + 'gsm'
+      m.name.toLowerCase().trim() === materialName.toLowerCase().trim() &&
+      m.spec?.trim() === String(plano).trim() &&
+      normalizeGsmLocal(m.notes) === String(gsm).trim()
     )
     return match ? match.price : 0
   }
@@ -121,8 +122,9 @@ export default function Calculator() {
 
   // ── Get unique values from DB ─────────────────────────────
   const materialNames  = [...new Set(dbMaterials.map(m => m.name))].sort()
-  const gsmOptions     = (matName) => [...new Set(dbMaterials.filter(m => m.name === matName).map(m => m.notes?.replace('gsm','') || ''))].sort((a,b)=>+a-+b)
-  const planoOptions   = (matName, gsm) => [...new Set(dbMaterials.filter(m => m.name === matName && m.notes === gsm+'gsm').map(m => m.spec))].sort()
+  const normalizeGsm   = (notes) => (notes || '').toLowerCase().replace('gsm','').trim()
+  const gsmOptions     = (matName) => [...new Set(dbMaterials.filter(m => m.name === matName).map(m => normalizeGsm(m.notes)))].filter(Boolean).sort((a,b)=>+a-+b)
+  const planoOptions   = (matName, gsm) => [...new Set(dbMaterials.filter(m => m.name === matName && normalizeGsm(m.notes) === String(gsm).trim()).map(m => m.spec))].sort()
   const mesinNames     = [...new Set(dbMesin.map(m => m.name))].sort()
   const embossNames    = [...new Set(dbEmboss.map(m => m.name))].sort()
   const matProsesNames = [...new Set(dbMatProses.map(m => m.name))].sort()
