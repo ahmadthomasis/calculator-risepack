@@ -106,11 +106,18 @@ export default function Calculator() {
   function lookupMaterialPrice(materialName, plano, gsm) {
     if (!materialName || !plano || !gsm) return 0
     const normalizeGsmLocal = (notes) => (notes || '').toLowerCase().replace('gsm','').trim()
-    const match = dbMaterials.find(m =>
-      m.name.toLowerCase().trim() === materialName.toLowerCase().trim() &&
-      m.spec?.trim() === String(plano).trim() &&
-      normalizeGsmLocal(m.notes) === String(gsm).trim()
-    )
+    const normGsm = String(gsm).trim()
+    const normName = materialName.toLowerCase().trim()
+    const normPlano = String(plano).trim()
+    console.log('[lookup]', { normName, normPlano, normGsm, dbCount: dbMaterials.length })
+    const match = dbMaterials.find(m => {
+      const mName = m.name.toLowerCase().trim()
+      const mSpec = (m.spec || '').trim()
+      const mGsm  = normalizeGsmLocal(m.notes)
+      const ok = mName === normName && mSpec === normPlano && mGsm === normGsm
+      if (mName === normName) console.log('[candidate]', { mName, mSpec, mGsm, ok })
+      return ok
+    })
     return match ? match.price : 0
   }
 
