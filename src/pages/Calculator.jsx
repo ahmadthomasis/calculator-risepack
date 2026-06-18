@@ -76,21 +76,23 @@ export default function Calculator() {
       supabase.from('raw_materials').select('*').eq('category','material_proses').order('name'),
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
     ])
+    // Load existing quotation if any
+    const { data: quot } = await supabase.from('quotations').select('*')
+      .eq('request_id', requestId).eq('is_active', true).single()
+
+    const normGsm = (rows) => (rows || []).map(r => ({
+      ...r,
+      gsm: String(r.gsm || '').toLowerCase().replace('gsm','').trim()
+    }))
+
+    // Set semua state sekaligus agar tidak ada race condition
     setRequest(req)
     setDbMaterials(mats || [])
     setDbMesin(mesin || [])
     setDbEmboss(emb || [])
     setDbMatProses(mp || [])
     setDbFinishing(fin || [])
-
-    // Load existing quotation if any
-    const { data: quot } = await supabase.from('quotations').select('*')
-      .eq('request_id', requestId).eq('is_active', true).single()
     if (quot) {
-      const normGsm = (rows) => (rows || []).map(r => ({
-        ...r,
-        gsm: String(r.gsm || '').toLowerCase().replace('gsm','').trim()
-      }))
       setMaterial(normGsm(quot.material_cost))
       setCetak(quot.cetak_cost || [])
       setEmboss(quot.emboss_laminasi || [])
