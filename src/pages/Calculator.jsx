@@ -31,7 +31,7 @@ const s = {
 const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', harga_kg:0, luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
 const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:'', insheet:0, harga_per_lembar:0 })
 const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:'', insheet:0, harga_per_cm2:0 })
-const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1 })
+const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1, luas_permukaan:'' })
 const newFinishing = () => ({ id:Date.now(), nama:'', proses:'', spesifik:'', harga_satuan:0 })
 const newAdditional= () => ({ id:Date.now(), nama:'', keterangan:'', harga:0 })
 
@@ -73,7 +73,7 @@ export default function Calculator() {
       supabase.from('raw_materials').select('*').eq('category','material').order('name'),
       supabase.from('raw_materials').select('id,name,spec,notes,price,harga_mesin,qty_threshold').eq('category','cetak').order('name'),
       supabase.from('raw_materials').select('id,name,spec,notes,price,minimum_charge').eq('category','emboss_laminasi').order('name'),
-      supabase.from('raw_materials').select('*').eq('category','material_proses').order('name'),
+      supabase.from('raw_materials').select('id,name,spec,notes,price,rate_per_cm').eq('category','material_proses').order('name'),
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
     ])
     // Load existing quotation if any
@@ -205,9 +205,19 @@ export default function Calculator() {
     return { ...r, harga_per_cm2: proc.harga, minimum_charge: proc.minimum_charge, harga_per_pcs, subtotal }
   }), [emboss, dbEmboss])
 
+  const PROSES_LUAS = ['pisau pond', 'klise poly', 'klise emboss']
   const calcMatProses = useCallback(() => matProses.map(r => {
     const match = dbMatProses.find(m => m.name === r.proses)
-    const harga = match ? match.price : num(r.harga_satuan)
+    const isLuasBased = PROSES_LUAS.includes(r.proses)
+    let harga
+    if (isLuasBased && match) {
+      const parts = String(r.luas_permukaan || '').toLowerCase().split('x')
+      const P = num(parts[0])
+      const L = num(parts[1])
+      harga = P * L * (match.rate_per_cm || 0)
+    } else {
+      harga = match ? match.price : num(r.harga_satuan)
+    }
     return { ...r, harga_satuan: harga, subtotal: harga * num(r.quantity) }
   }), [matProses, dbMatProses])
 
@@ -461,10 +471,10 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Harga Satuan','Qty','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Luas Permukaan','Harga Satuan','Qty','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {matProses.length === 0 && <tr><td colSpan={6} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {matProses.length === 0 && <tr><td colSpan={7} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
             {mpCalc.map((row,i) => (
               <tr key={row.id}>
                 <td style={s.td}><input style={{ ...s.input, width:100 }} value={row.nama} onChange={e => updater(setMatProses)(i,'nama',e.target.value)} /></td>
@@ -474,6 +484,7 @@ export default function Calculator() {
                     {matProsesNames.map(n=><option key={n}>{n}</option>)}
                   </select>
                 </td>
+                <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setMatProses)(i,'luas_permukaan',e.target.value)} placeholder="20x20" /></td>
                 <td style={s.td}><div style={{ ...s.calc, color:'#16a34a' }}>{idr(row.harga_satuan)}</div></td>
                 <td style={s.td}><input style={{ ...s.input, width:70 }} type="number" value={row.quantity} onChange={e => updater(setMatProses)(i,'quantity',e.target.value)} /></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
@@ -498,7 +509,7 @@ export default function Calculator() {
             {['Nama','Proses','Spesifik','Harga/pcs','Subtotal (×qty)',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {finishing.length === 0 && <tr><td colSpan={6} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {finishing.length === 0 && <tr><td colSpan={7} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
             {finCalc.map((row,i) => (
               <tr key={row.id}>
                 <td style={s.td}><input style={{ ...s.input, width:100 }} value={row.nama} onChange={e => updater(setFinishing)(i,'nama',e.target.value)} /></td>
