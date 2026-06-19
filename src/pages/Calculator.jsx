@@ -258,8 +258,8 @@ export default function Calculator() {
       const harga_per_pcs = qty > 0 ? subtotal_final / qty : 0
       return { ...r, harga: harga_per_pcs, subtotal: subtotal_final }
     }
-    // Proses manual lainnya - harga diisi langsung, ini total
-    return { ...r, subtotal: num(r.harga) }
+    // Proses manual lainnya - harga diisi per pcs, subtotal = harga x qty
+    return { ...r, subtotal: num(r.harga) * qty }
   }), [additional, dbAdditional])
 
   const matCalc  = calcMaterial()
@@ -608,15 +608,13 @@ export default function Calculator() {
                   )}
                 </td>
                 <td style={s.td}>
-                  {(row.proses === 'potong' || row.proses === 'lem samping') ? (
-                    <input style={{ ...s.input, width:70 }} type="number" value={row.quantity} onChange={e => updater(setAdditional)(i,'quantity',e.target.value)} />
-                  ) : <span style={{ color:'#d1d5db' }}>—</span>}
+                  <input style={{ ...s.input, width:70 }} type="number" value={row.quantity} onChange={e => updater(setAdditional)(i,'quantity',e.target.value)} />
                 </td>
                 <td style={s.td}>
                   {(row.proses === 'potong' || row.proses === 'lem samping') ? (
                     <div style={s.calcGreen}>{row.harga > 0 ? idr(row.harga) : '—'}</div>
                   ) : (
-                    <input style={{ ...s.input, width:110 }} type="number" value={row.harga} onChange={e => updater(setAdditional)(i,'harga',e.target.value)} placeholder="manual" />
+                    <input style={{ ...s.input, width:110 }} type="number" value={row.harga} onChange={e => updater(setAdditional)(i,'harga',e.target.value)} placeholder="harga/pcs" />
                   )}
                 </td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
