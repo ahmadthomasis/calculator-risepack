@@ -12,6 +12,7 @@ const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', 
 
 const PLANO_OPTIONS = ['79x109','65x100','90x120','90x100','77x66','75x100','70x100','120x200','custom']
 const WARNA_OPTIONS = ['1 warna','2 warna','4 warna','4 warna + 1 spesial','5 warna']
+const ADDITIONAL_PROSES = ['transport','film','potong','BBL','packing','jendela mika','mika','lem samping']
 
 const s = {
   card:   { background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(44,24,16,0.08)', marginBottom:20, border:`1px solid ${C.border}` },
@@ -33,7 +34,7 @@ const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 wa
 const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:'', insheet:0, harga_per_cm2:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1, luas_permukaan:'' })
 const newFinishing = () => ({ id:Date.now(), nama:'', proses:'', spesifik:'', harga_satuan:0 })
-const newAdditional= () => ({ id:Date.now(), nama:'', keterangan:'', harga:0 })
+const newAdditional= () => ({ id:Date.now(), nama:'', proses:'', keterangan:'', luas_permukaan:'', gramasi:'', panjang_lem:'', quantity:0, harga:0 })
 
 export default function Calculator() {
   const { requestId } = useParams()
@@ -49,6 +50,7 @@ export default function Calculator() {
   const [dbEmboss,    setDbEmboss]    = useState([])
   const [dbMatProses, setDbMatProses] = useState([])
   const [dbFinishing, setDbFinishing] = useState([])
+  const [dbAdditional,setDbAdditional]= useState([])
 
   const [material,   setMaterial]   = useState([])
   const [cetak,      setCetak]      = useState([])
@@ -68,6 +70,7 @@ export default function Calculator() {
       { data: emb },
       { data: mp },
       { data: fin },
+      { data: addl },
     ] = await Promise.all([
       supabase.from('requests').select('*').eq('id', requestId).single(),
       supabase.from('raw_materials').select('*').eq('category','material').order('name'),
@@ -75,6 +78,7 @@ export default function Calculator() {
       supabase.from('raw_materials').select('id,name,spec,notes,price,minimum_charge').eq('category','emboss_laminasi').order('name'),
       supabase.from('raw_materials').select('id,name,spec,notes,price,rate_per_cm').eq('category','material_proses').order('name'),
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
+      supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional').order('name'),
     ])
     // Load existing quotation if any
     const { data: quot } = await supabase.from('quotations').select('*')
@@ -92,6 +96,7 @@ export default function Calculator() {
     setDbEmboss(emb || [])
     setDbMatProses(mp || [])
     setDbFinishing(fin || [])
+    setDbAdditional(addl || [])
     if (quot) {
       setMaterial(normGsm(quot.material_cost))
       setCetak(quot.cetak_cost || [])
@@ -231,11 +236,38 @@ export default function Calculator() {
     return { ...r, harga_satuan: harga, subtotal: harga * num(request?.quantity || 0) }
   }), [finishing, dbFinishing, request])
 
+  const calcAdditional = useCallback(() => additional.map(r => {
+    const match = dbAdditional.find(m => m.name === r.proses)
+    const qty = num(r.quantity)
+    if (r.proses === 'potong' && match) {
+      const parts = String(r.luas_permukaan || '').toLowerCase().split('x')
+      const P = num(parts[0])
+      const L = num(parts[1])
+      const gramasi = num(r.gramasi)
+      const total_kg = (P * L * gramasi) / 10000
+      const biaya_total = total_kg * (match.rate_per_kg || 0)
+      const biaya_final = Math.max(biaya_total, match.minimum_charge || 0)
+      const harga_per_pcs = qty > 0 ? biaya_final / qty : 0
+      return { ...r, harga: harga_per_pcs, subtotal: biaya_final }
+    }
+    if (r.proses === 'lem samping' && match) {
+      const panjang = num(r.panjang_lem)
+      const harga_per_pcs_calc = (panjang * (match.rate_a || 0)) + (match.rate_b || 0)
+      const subtotal_calc = harga_per_pcs_calc * qty
+      const subtotal_final = Math.max(subtotal_calc, match.minimum_charge || 0)
+      const harga_per_pcs = qty > 0 ? subtotal_final / qty : 0
+      return { ...r, harga: harga_per_pcs, subtotal: subtotal_final }
+    }
+    // Proses manual lainnya - harga diisi langsung, ini total
+    return { ...r, subtotal: num(r.harga) }
+  }), [additional, dbAdditional])
+
   const matCalc  = calcMaterial()
   const cetakCalc= calcCetak()
   const embCalc  = calcEmboss()
   const mpCalc   = calcMatProses()
   const finCalc  = calcFinishing()
+  const addCalc  = calcAdditional()
 
   const sub = {
     material:   matCalc.reduce((s, r) => s + (r.subtotal||0), 0),
@@ -243,7 +275,7 @@ export default function Calculator() {
     emboss:     embCalc.reduce((s, r) => s + (r.subtotal||0), 0),
     matProses:  mpCalc.reduce((s, r) => s + (r.subtotal||0), 0),
     finishing:  finCalc.reduce((s, r) => s + (r.subtotal||0), 0),
-    additional: additional.reduce((s, r) => s + num(r.harga), 0),
+    additional: addCalc.reduce((s, r) => s + (r.subtotal||0), 0),
   }
   const total   = Object.values(sub).reduce((a, b) => a + b, 0)
   const selling = total * (1 + num(margin) / 100)
@@ -550,15 +582,44 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Keterangan','Harga',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Detail','Qty','Harga/pcs','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {additional.length === 0 && <tr><td colSpan={4} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
-            {additional.map((row,i) => (
+            {additional.length === 0 && <tr><td colSpan={7} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {addCalc.map((row,i) => (
               <tr key={row.id}>
-                <td style={s.td}><input style={{ ...s.input, width:120 }} value={row.nama} onChange={e => updater(setAdditional)(i,'nama',e.target.value)} /></td>
-                <td style={s.td}><input style={{ ...s.input, width:220 }} value={row.keterangan} onChange={e => updater(setAdditional)(i,'keterangan',e.target.value)} /></td>
-                <td style={s.td}><input style={{ ...s.input, width:120 }} type="number" value={row.harga} onChange={e => updater(setAdditional)(i,'harga',e.target.value)} /></td>
+                <td style={s.td}><input style={{ ...s.input, width:100 }} value={row.nama} onChange={e => updater(setAdditional)(i,'nama',e.target.value)} /></td>
+                <td style={s.td}>
+                  <select style={{ ...s.select, width:130 }} value={row.proses} onChange={e => updater(setAdditional)(i,'proses',e.target.value)}>
+                    <option value="">-- pilih --</option>
+                    {ADDITIONAL_PROSES.map(p=><option key={p}>{p}</option>)}
+                  </select>
+                </td>
+                <td style={s.td}>
+                  {row.proses === 'potong' ? (
+                    <div style={{ display:'flex', gap:4 }}>
+                      <input style={{ ...s.input, width:70 }} type="text" placeholder="PxL cm" value={row.luas_permukaan} onChange={e => updater(setAdditional)(i,'luas_permukaan',e.target.value)} />
+                      <input style={{ ...s.input, width:60 }} type="number" placeholder="gsm" value={row.gramasi} onChange={e => updater(setAdditional)(i,'gramasi',e.target.value)} />
+                    </div>
+                  ) : row.proses === 'lem samping' ? (
+                    <input style={{ ...s.input, width:100 }} type="number" placeholder="panjang(cm)" value={row.panjang_lem} onChange={e => updater(setAdditional)(i,'panjang_lem',e.target.value)} />
+                  ) : (
+                    <input style={{ ...s.input, width:180 }} value={row.keterangan} onChange={e => updater(setAdditional)(i,'keterangan',e.target.value)} placeholder="keterangan" />
+                  )}
+                </td>
+                <td style={s.td}>
+                  {(row.proses === 'potong' || row.proses === 'lem samping') ? (
+                    <input style={{ ...s.input, width:70 }} type="number" value={row.quantity} onChange={e => updater(setAdditional)(i,'quantity',e.target.value)} />
+                  ) : <span style={{ color:'#d1d5db' }}>—</span>}
+                </td>
+                <td style={s.td}>
+                  {(row.proses === 'potong' || row.proses === 'lem samping') ? (
+                    <div style={s.calcGreen}>{row.harga > 0 ? idr(row.harga) : '—'}</div>
+                  ) : (
+                    <input style={{ ...s.input, width:110 }} type="number" value={row.harga} onChange={e => updater(setAdditional)(i,'harga',e.target.value)} placeholder="manual" />
+                  )}
+                </td>
+                <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => setAdditional(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
               </tr>
             ))}
