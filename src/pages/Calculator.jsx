@@ -209,16 +209,20 @@ export default function Calculator() {
   const calcMatProses = useCallback(() => matProses.map(r => {
     const match = dbMatProses.find(m => m.name === r.proses)
     const isLuasBased = PROSES_LUAS.includes(r.proses)
-    let harga
+    const qty = num(r.quantity)
+    let harga_per_pcs, subtotal
     if (isLuasBased && match) {
       const parts = String(r.luas_permukaan || '').toLowerCase().split('x')
       const P = num(parts[0])
       const L = num(parts[1])
-      harga = P * L * (match.rate_per_cm || 0)
+      const total_biaya = P * L * (match.rate_per_cm || 0)
+      harga_per_pcs = qty > 0 ? total_biaya / qty : 0
+      subtotal = total_biaya
     } else {
-      harga = match ? match.price : num(r.harga_satuan)
+      harga_per_pcs = match ? match.price : num(r.harga_satuan)
+      subtotal = harga_per_pcs * qty
     }
-    return { ...r, harga_satuan: harga, subtotal: harga * num(r.quantity) }
+    return { ...r, harga_satuan: harga_per_pcs, subtotal }
   }), [matProses, dbMatProses])
 
   const calcFinishing = useCallback(() => finishing.map(r => {
