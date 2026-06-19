@@ -45,7 +45,6 @@ export default function Calculator() {
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
   const [margin,   setMargin]   = useState(15)
-  const [diskon,   setDiskon]   = useState(0)
   const [dbMaterials, setDbMaterials] = useState([])
   const [dbMesin,     setDbMesin]     = useState([])
   const [dbEmboss,    setDbEmboss]    = useState([])
@@ -106,7 +105,6 @@ export default function Calculator() {
       setFinishing(quot.finishing_wo || [])
       setAdditional(quot.additional_cost || [])
       setMargin(quot.margin_percent || 15)
-      setDiskon(quot.diskon_percent || 0)
     }
     setLoading(false)
   }
@@ -179,8 +177,10 @@ export default function Calculator() {
     const harga_per_pcs = (planoGet > 0 && quantity > 0 && insheet > 0)
       ? ((quantity + insheet) / planoGet / mata * harga) / quantity
       : 0
-    const subtotal = harga_per_pcs * quantity
-    return { ...r, harga_lembar: harga, harga_per_pcs, subtotal }
+    const subtotal_raw = harga_per_pcs * quantity
+    const diskon = num(r.diskon)
+    const subtotal = subtotal_raw * (1 - diskon/100)
+    return { ...r, harga_lembar: harga, harga_per_pcs, subtotal_raw, subtotal }
   }), [material, dbMaterials])
 
   const calcCetak = useCallback(() => cetak.map(r => {
@@ -193,8 +193,10 @@ export default function Calculator() {
       ? ((qty + insheet - mesin.qty_threshold) * mesin.per_drug + mesin.harga_mesin)
       : mesin.harga_mesin
     const harga_per_pcs = qty > 0 ? total_biaya / qty : 0
-    const subtotal = harga_per_pcs * qty
-    return { ...r, harga_per_pcs, harga_mesin: mesin.harga_mesin, per_drug: mesin.per_drug, qty_threshold: mesin.qty_threshold, subtotal }
+    const subtotal_raw = harga_per_pcs * qty
+    const diskon = num(r.diskon)
+    const subtotal = subtotal_raw * (1 - diskon/100)
+    return { ...r, harga_per_pcs, harga_mesin: mesin.harga_mesin, per_drug: mesin.per_drug, qty_threshold: mesin.qty_threshold, subtotal_raw, subtotal }
   }), [cetak, dbMesin])
 
   const calcEmboss = useCallback(() => emboss.map(r => {
@@ -207,9 +209,11 @@ export default function Calculator() {
     const L       = num(parts[1])
     // Rumus: (P x L x harga x (qty+insheet)) / qty, minimum dikunci ke minimum_charge
     const subtotal_calc = (P * L * proc.harga * (qty + insheet))
-    const subtotal = Math.max(subtotal_calc, proc.minimum_charge)
-    const harga_per_pcs = qty > 0 ? subtotal / qty : 0
-    return { ...r, harga_per_cm2: proc.harga, minimum_charge: proc.minimum_charge, harga_per_pcs, subtotal }
+    const subtotal_raw = Math.max(subtotal_calc, proc.minimum_charge)
+    const harga_per_pcs = qty > 0 ? subtotal_raw / qty : 0
+    const diskon = num(r.diskon)
+    const subtotal = subtotal_raw * (1 - diskon/100)
+    return { ...r, harga_per_cm2: proc.harga, minimum_charge: proc.minimum_charge, harga_per_pcs, subtotal_raw, subtotal }
   }), [emboss, dbEmboss])
 
   const PROSES_LUAS = ['pisau pond', 'klise poly', 'klise emboss']
@@ -229,18 +233,25 @@ export default function Calculator() {
       harga_per_pcs = match ? match.price : num(r.harga_satuan)
       subtotal = harga_per_pcs * qty
     }
-    return { ...r, harga_satuan: harga_per_pcs, subtotal }
+    const subtotal_raw = subtotal
+    const diskon = num(r.diskon)
+    const subtotal_final = subtotal_raw * (1 - diskon/100)
+    return { ...r, harga_satuan: harga_per_pcs, subtotal_raw, subtotal: subtotal_final }
   }), [matProses, dbMatProses])
 
   const calcFinishing = useCallback(() => finishing.map(r => {
     const match = dbFinishing.find(m => m.name === r.proses && m.spec === r.spesifik)
     const harga = match ? match.price : num(r.harga_satuan)
-    return { ...r, harga_satuan: harga, subtotal: harga * num(request?.quantity || 0) }
+    const subtotal_raw = harga * num(request?.quantity || 0)
+    const diskon = num(r.diskon)
+    const subtotal = subtotal_raw * (1 - diskon/100)
+    return { ...r, harga_satuan: harga, subtotal_raw, subtotal }
   }), [finishing, dbFinishing, request])
 
   const calcAdditional = useCallback(() => additional.map(r => {
     const match = dbAdditional.find(m => m.name === r.proses)
     const qty = num(r.quantity)
+    const diskon = num(r.diskon)
     if (r.proses === 'potong' && match) {
       const parts = String(r.luas_permukaan || '').toLowerCase().split('x')
       const P = num(parts[0])
@@ -248,20 +259,24 @@ export default function Calculator() {
       const gramasi = num(r.gramasi)
       const total_kg = (P * L * gramasi) / 10000
       const biaya_total = total_kg * (match.rate_per_kg || 0)
-      const biaya_final = Math.max(biaya_total, match.minimum_charge || 0)
-      const harga_per_pcs = qty > 0 ? biaya_final / qty : 0
-      return { ...r, harga: harga_per_pcs, subtotal: biaya_final }
+      const subtotal_raw = Math.max(biaya_total, match.minimum_charge || 0)
+      const harga_per_pcs = qty > 0 ? subtotal_raw / qty : 0
+      const subtotal = subtotal_raw * (1 - diskon/100)
+      return { ...r, harga: harga_per_pcs, subtotal_raw, subtotal }
     }
     if (r.proses === 'lem samping' && match) {
       const panjang = num(r.panjang_lem)
       const harga_per_pcs_calc = (panjang * (match.rate_a || 0)) + (match.rate_b || 0)
       const subtotal_calc = harga_per_pcs_calc * qty
-      const subtotal_final = Math.max(subtotal_calc, match.minimum_charge || 0)
-      const harga_per_pcs = qty > 0 ? subtotal_final / qty : 0
-      return { ...r, harga: harga_per_pcs, subtotal: subtotal_final }
+      const subtotal_raw = Math.max(subtotal_calc, match.minimum_charge || 0)
+      const harga_per_pcs = qty > 0 ? subtotal_raw / qty : 0
+      const subtotal = subtotal_raw * (1 - diskon/100)
+      return { ...r, harga: harga_per_pcs, subtotal_raw, subtotal }
     }
     // Proses manual lainnya - harga diisi per pcs, subtotal = harga x qty
-    return { ...r, subtotal: num(r.harga) * qty }
+    const subtotal_raw = num(r.harga) * qty
+    const subtotal = subtotal_raw * (1 - diskon/100)
+    return { ...r, subtotal_raw, subtotal }
   }), [additional, dbAdditional])
 
   const matCalc  = calcMaterial()
@@ -281,9 +296,7 @@ export default function Calculator() {
   }
   const total   = Object.values(sub).reduce((a, b) => a + b, 0)
   const selling = total * (1 + num(margin) / 100)
-  const diskonAmount = selling * (num(diskon) / 100)
-  const sellingAfterDiskon = selling - diskonAmount
-  const perUnit = request?.quantity ? sellingAfterDiskon / request.quantity : 0
+  const perUnit = request?.quantity ? selling / request.quantity : 0
 
   async function handleSave() {
     setSaving(true)
@@ -295,8 +308,8 @@ export default function Calculator() {
       material_proses: mpCalc, finishing_wo: finCalc, additional_cost: additional,
       subtotal_material: sub.material, subtotal_cetak: sub.cetak, subtotal_emboss: sub.emboss,
       subtotal_matproses: sub.matProses, subtotal_finishing: sub.finishing, subtotal_additional: sub.additional,
-      total_cost: total, margin_percent: num(margin), diskon_percent: num(diskon),
-      selling_price: Math.round(sellingAfterDiskon),
+      total_cost: total, margin_percent: num(margin),
+      selling_price: Math.round(selling),
       price_per_unit: perUnit, deal_status: 'quoted',
     })
     if (!error) {
@@ -353,12 +366,12 @@ export default function Calculator() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:900 }}>
             <thead><tr>
-              {['Nama','Material','GSM','Plano','Luas Permukaan','Mata','Plano Get','Qty','Insheet','Harga/Lembar','Harga/pcs','Subtotal',''].map(h => (
+              {['Nama','Material','GSM','Plano','Luas Permukaan','Mata','Plano Get','Qty','Insheet','Harga/Lembar','Harga/pcs','Diskon%','Subtotal',''].map(h => (
                 <th key={h} style={s.th}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
-              {material.length === 0 && <tr><td colSpan={13} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+              {material.length === 0 && <tr><td colSpan={14} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
               {matCalc.map((row, i) => (
                 <tr key={row.id}>
                   <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setMaterial)(i,'nama',e.target.value)} placeholder="cover" /></td>
@@ -415,6 +428,7 @@ export default function Calculator() {
                   <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setMaterial)(i,'insheet',e.target.value)} placeholder="500" /></td>
                   <td style={s.td}><div style={{ ...s.calc, color: row.harga_lembar > 0 ? '#16a34a' : '#9ca3af' }}>{row.harga_lembar > 0 ? idr(row.harga_lembar) : '—'}</div></td>
                   <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
+                  <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setMaterial)(i,'diskon',e.target.value)} placeholder="0" /></td>
                   <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                   <td style={s.td}><button style={s.delBtn} onClick={() => setMaterial(p => p.filter((_,idx)=>idx!==i))}>✕</button></td>
                 </tr>
@@ -436,10 +450,10 @@ export default function Calculator() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead><tr>
-              {['Nama','Mesin','Warna','Qty','Insheet','Luas Permukaan','Harga/pcs','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+              {['Nama','Mesin','Warna','Qty','Insheet','Luas Permukaan','Harga/pcs','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {cetak.length === 0 && <tr><td colSpan={9} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+              {cetak.length === 0 && <tr><td colSpan={10} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
               {cetakCalc.map((row,i) => (
                 <tr key={row.id}>
                   <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setCetak)(i,'nama',e.target.value)} /></td>
@@ -457,6 +471,7 @@ export default function Calculator() {
                   <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setCetak)(i,'insheet',e.target.value)} /></td>
                   <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setCetak)(i,'luas_permukaan',e.target.value)} placeholder="30x40" /></td>
                   <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
+                  <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setCetak)(i,'diskon',e.target.value)} placeholder="0" /></td>
                   <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                   <td style={s.td}><button style={s.delBtn} onClick={() => setCetak(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
                 </tr>
@@ -477,10 +492,10 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Qty','Insheet','Luas Permukaan','Harga/pcs','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Qty','Insheet','Luas Permukaan','Harga/pcs','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {emboss.length === 0 && <tr><td colSpan={8} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {emboss.length === 0 && <tr><td colSpan={9} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
             {embCalc.map((row,i) => (
               <tr key={row.id}>
                 <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setEmboss)(i,'nama',e.target.value)} /></td>
@@ -493,6 +508,7 @@ export default function Calculator() {
                 <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setEmboss)(i,'insheet',e.target.value)} /></td>
                 <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setEmboss)(i,'luas_permukaan',e.target.value)} placeholder="20x20" /></td>
                 <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
+                <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setEmboss)(i,'diskon',e.target.value)} placeholder="0" /></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => setEmboss(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
               </tr>
@@ -512,10 +528,10 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Luas Permukaan','Harga Satuan','Qty','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Luas Permukaan','Harga Satuan','Qty','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {matProses.length === 0 && <tr><td colSpan={7} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {matProses.length === 0 && <tr><td colSpan={8} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
             {mpCalc.map((row,i) => (
               <tr key={row.id}>
                 <td style={s.td}><input style={{ ...s.input, width:100 }} value={row.nama} onChange={e => updater(setMatProses)(i,'nama',e.target.value)} /></td>
@@ -528,6 +544,7 @@ export default function Calculator() {
                 <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setMatProses)(i,'luas_permukaan',e.target.value)} placeholder="20x20" /></td>
                 <td style={s.td}><div style={{ ...s.calc, color:'#16a34a' }}>{idr(row.harga_satuan)}</div></td>
                 <td style={s.td}><input style={{ ...s.input, width:70 }} type="number" value={row.quantity} onChange={e => updater(setMatProses)(i,'quantity',e.target.value)} /></td>
+                <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setMatProses)(i,'diskon',e.target.value)} placeholder="0" /></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => setMatProses(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
               </tr>
@@ -547,10 +564,10 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Spesifik','Harga/pcs','Subtotal (×qty)',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Spesifik','Harga/pcs','Diskon%','Subtotal (×qty)',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {finishing.length === 0 && <tr><td colSpan={7} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {finishing.length === 0 && <tr><td colSpan={8} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
             {finCalc.map((row,i) => (
               <tr key={row.id}>
                 <td style={s.td}><input style={{ ...s.input, width:100 }} value={row.nama} onChange={e => updater(setFinishing)(i,'nama',e.target.value)} /></td>
@@ -568,6 +585,7 @@ export default function Calculator() {
                   </select>
                 </td>
                 <td style={s.td}><div style={{ ...s.calc, color:'#16a34a' }}>{idr(row.harga_satuan)}</div></td>
+                <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setFinishing)(i,'diskon',e.target.value)} placeholder="0" /></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => setFinishing(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
               </tr>
@@ -587,10 +605,10 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Detail','Qty','Harga/pcs','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Detail','Qty','Harga/pcs','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {additional.length === 0 && <tr><td colSpan={7} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {additional.length === 0 && <tr><td colSpan={8} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
             {addCalc.map((row,i) => (
               <tr key={row.id}>
                 <td style={s.td}><input style={{ ...s.input, width:100 }} value={row.nama} onChange={e => updater(setAdditional)(i,'nama',e.target.value)} /></td>
@@ -622,6 +640,7 @@ export default function Calculator() {
                     <input style={{ ...s.input, width:110 }} type="number" value={row.harga} onChange={e => updater(setAdditional)(i,'harga',e.target.value)} placeholder="harga/pcs" />
                   )}
                 </td>
+                <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setAdditional)(i,'diskon',e.target.value)} placeholder="0" /></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => setAdditional(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
               </tr>
@@ -645,17 +664,6 @@ export default function Calculator() {
             <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', fontSize:14, fontWeight:700, color:C.dark, borderTop:`2px solid ${C.border}`, marginTop:4 }}>
               <span>Total Modal</span><span>{idr(total)}</span>
             </div>
-            <div style={{ marginTop:16, paddingTop:16, borderTop:`1px dashed ${C.border}` }}>
-              <label style={{ fontSize:13, color:C.brown, display:'block', marginBottom:6 }}>Diskon (%)</label>
-              <input type="number" min="0" max="100" value={diskon}
-                onChange={e => setDiskon(e.target.value)}
-                style={{ ...s.input, width:100, fontSize:16, fontWeight:600 }} />
-              {num(diskon) > 0 && (
-                <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', fontSize:13, color:'#dc2626', marginTop:8 }}>
-                  <span>Potongan Diskon</span><span style={{ fontFamily:'monospace' }}>- {idr(diskonAmount)}</span>
-                </div>
-              )}
-            </div>
           </div>
           <div>
             <div style={{ fontSize:14, fontWeight:600, color:C.dark, marginBottom:12 }}>Harga Jual</div>
@@ -664,11 +672,8 @@ export default function Calculator() {
               onChange={e => setMargin(e.target.value)}
               style={{ ...s.input, width:100, fontSize:16, fontWeight:600, marginBottom:16 }} />
             <div style={{ background:'#f0fdf4', borderRadius:8, padding:16 }}>
-              <div style={{ fontSize:12, color:'#16a34a', marginBottom:4 }}>Harga Jual Total{num(diskon) > 0 ? ' (setelah diskon)' : ''}</div>
-              <div style={{ fontSize:26, fontWeight:700, color:'#15803d' }}>{idr(sellingAfterDiskon)}</div>
-              {num(diskon) > 0 && (
-                <div style={{ fontSize:12, color:'#9ca3af', textDecoration:'line-through', marginTop:2 }}>{idr(selling)}</div>
-              )}
+              <div style={{ fontSize:12, color:'#16a34a', marginBottom:4 }}>Harga Jual Total</div>
+              <div style={{ fontSize:26, fontWeight:700, color:'#15803d' }}>{idr(selling)}</div>
               <div style={{ fontSize:13, color:'#16a34a', marginTop:6 }}>
                 Per unit: {idr(perUnit)} &nbsp;|&nbsp; Qty: {fmt(request.quantity)}
               </div>
