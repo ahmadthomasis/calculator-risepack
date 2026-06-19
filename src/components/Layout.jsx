@@ -33,8 +33,29 @@ const CutIcon = ({ active }) => (
   </svg>
 )
 
+const UserIcon = ({ active }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+    <circle cx="9" cy="7" r="4" />
+    <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+    <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+  </svg>
+)
+
+const TagIcon = ({ active }) => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2H2v10l9.29 9.29a1 1 0 0 0 1.42 0l8.58-8.58a1 1 0 0 0 0-1.42L12 2Z" />
+    <circle cx="7" cy="7" r="1.5" fill={active ? '#fff' : 'rgba(255,255,255,0.55)'} stroke="none" />
+  </svg>
+)
+
 const sidebarItems = [
   { path: '/potong-kertas', label: 'Potong Kertas', Icon: CutIcon },
+]
+
+const masterDataItems = [
+  { path: '/user-management', label: 'User Mgmt', Icon: UserIcon },
+  { path: '/pricing-dataset', label: 'Pricing', Icon: TagIcon },
 ]
 
 export default function Layout({ children, title }) {
@@ -57,8 +78,10 @@ export default function Layout({ children, title }) {
         alignItems:'center',
         flexShrink:0,
         paddingTop:18,
+        paddingBottom:18,
         gap:6,
       }}>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', width:'100%', gap:6 }}>
         <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:18 }}>
           <span style={{ fontSize:16, fontWeight:800, color:'#fff', letterSpacing:'-0.5px', lineHeight:1.1 }}>Rise</span>
           <span style={{ fontSize:16, fontWeight:800, color:C.orange, letterSpacing:'-0.5px', lineHeight:1.1 }}>pack</span>
@@ -96,6 +119,34 @@ export default function Layout({ children, title }) {
             </button>
           )
         })}
+        </div>
+
+        {profile?.role === 'manager' && (
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', width:'100%', gap:6, marginTop:'auto', paddingTop:14, borderTop:'1px solid rgba(255,255,255,0.12)' }}>
+            <span style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.35)', letterSpacing:'0.5px', textTransform:'uppercase', marginBottom:2 }}>
+              Master Data
+            </span>
+            {masterDataItems.map(item => {
+              const active = location.pathname === item.path
+              const { Icon } = item
+              return (
+                <button
+                  key={item.path}
+                  onClick={() => navigate(item.path)}
+                  style={{
+                    width:64, display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+                    padding:'10px 4px', borderRadius:10, border:'none', cursor:'pointer',
+                    background: active ? C.orange : 'transparent',
+                    transition:'background 0.15s',
+                  }}
+                >
+                  <Icon active={active} />
+                  <span style={{ fontSize:10, fontWeight:600, color: active ? '#fff' : 'rgba(255,255,255,0.55)', textAlign:'center', lineHeight:1.2 }}>{item.label}</span>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </aside>
 
       {/* ── Area kanan: topbar + konten ───────────────────── */}
@@ -171,3 +222,4 @@ export default function Layout({ children, title }) {
     </div>
   )
 }
+
