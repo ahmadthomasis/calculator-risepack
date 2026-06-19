@@ -71,7 +71,7 @@ export default function Calculator() {
     ] = await Promise.all([
       supabase.from('requests').select('*').eq('id', requestId).single(),
       supabase.from('raw_materials').select('*').eq('category','material').order('name'),
-      supabase.from('raw_materials').select('*').eq('category','cetak').order('name'),
+      supabase.from('raw_materials').select('id,name,spec,notes,price,harga_mesin,qty_threshold').eq('category','cetak').order('name'),
       supabase.from('raw_materials').select('*').eq('category','emboss_laminasi').order('name'),
       supabase.from('raw_materials').select('*').eq('category','material_proses').order('name'),
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
