@@ -29,7 +29,7 @@ const s = {
 
 // ── Row factories ─────────────────────────────────────────────
 const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', harga_kg:0, luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
-const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:0, insheet:0, harga_per_lembar:0 })
+const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:'', insheet:0, harga_per_lembar:0 })
 const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:0, insheet:0, harga_per_cm2:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1 })
 const newFinishing = () => ({ id:Date.now(), nama:'', proses:'', spesifik:'', harga_satuan:0 })
@@ -121,9 +121,13 @@ export default function Calculator() {
     return match ? match.price : 0
   }
 
-  function lookupMesinPrice(mesinName) {
+  function lookupMesin(mesinName) {
     const match = dbMesin.find(m => m.name === mesinName)
-    return match ? match.price : 0
+    return match ? {
+      per_drug: match.price || 0,
+      harga_mesin: match.harga_mesin || 0,
+      qty_threshold: match.qty_threshold || 0
+    } : { per_drug: 0, harga_mesin: 0, qty_threshold: 0 }
   }
 
   function lookupEmbossPrice(prosesName) {
@@ -165,9 +169,15 @@ export default function Calculator() {
   }), [material, dbMaterials])
 
   const calcCetak = useCallback(() => cetak.map(r => {
-    const harga    = num(r.harga_per_lembar) > 0 ? num(r.harga_per_lembar) : lookupMesinPrice(r.mesin)
-    const subtotal = num(r.insheet) * harga
-    return { ...r, harga_per_lembar: harga, subtotal }
+    const qty      = num(r.quantity)
+    const insheet  = num(r.insheet)
+    const mesin    = lookupMesin(r.mesin)
+    // Rumus: ((qty + insheet - qty_threshold) * per_drug + harga_mesin) / qty
+    const harga_per_pcs = qty > 0
+      ? ((qty + insheet - mesin.qty_threshold) * mesin.per_drug + mesin.harga_mesin) / qty
+      : 0
+    const subtotal = harga_per_pcs * qty
+    return { ...r, harga_per_pcs, harga_mesin: mesin.harga_mesin, per_drug: mesin.per_drug, qty_threshold: mesin.qty_threshold, subtotal }
   }), [cetak, dbMesin])
 
   const calcEmboss = useCallback(() => emboss.map(r => {
@@ -351,10 +361,10 @@ export default function Calculator() {
         <div style={{ overflowX:'auto' }}>
           <table style={{ width:'100%', borderCollapse:'collapse' }}>
             <thead><tr>
-              {['Nama','Mesin','Warna','Insheet','Luas (m²)','Harga/Lembar','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+              {['Nama','Mesin','Warna','Qty','Insheet','Luas Permukaan','Harga/pcs','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
             </tr></thead>
             <tbody>
-              {cetak.length === 0 && <tr><td colSpan={8} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+              {cetak.length === 0 && <tr><td colSpan={9} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
               {cetakCalc.map((row,i) => (
                 <tr key={row.id}>
                   <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setCetak)(i,'nama',e.target.value)} /></td>
@@ -368,9 +378,10 @@ export default function Calculator() {
                       {WARNA_OPTIONS.map(w=><option key={w}>{w}</option>)}
                     </select>
                   </td>
+                  <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.quantity} onChange={e => updater(setCetak)(i,'quantity',e.target.value)} /></td>
                   <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setCetak)(i,'insheet',e.target.value)} /></td>
-                  <td style={s.td}><input style={{ ...s.input, width:90 }} type="number" step="0.001" value={row.luas_permukaan} onChange={e => updater(setCetak)(i,'luas_permukaan',e.target.value)} /></td>
-                  <td style={s.td}><div style={{ ...s.calc, color:'#16a34a' }}>{idr(row.harga_per_lembar)}</div></td>
+                  <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setCetak)(i,'luas_permukaan',e.target.value)} placeholder="30x40" /></td>
+                  <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
                   <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                   <td style={s.td}><button style={s.delBtn} onClick={() => setCetak(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
                 </tr>
