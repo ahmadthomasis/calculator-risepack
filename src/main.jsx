@@ -44,6 +44,9 @@ function RoleRouter() {
       {profile.role === 'manager' && (
         <>
           <Route path="/" element={<ManagerDashboard />} />
+          <Route path="/sales" element={<SalesDashboard />} />
+          <Route path="/estimator" element={<EstimatorQueue />} />
+          <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
