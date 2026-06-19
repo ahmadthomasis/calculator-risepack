@@ -172,10 +172,12 @@ export default function Calculator() {
     const qty      = num(r.quantity)
     const insheet  = num(r.insheet)
     const mesin    = lookupMesin(r.mesin)
-    // Rumus: ((qty + insheet - qty_threshold) * per_drug + harga_mesin) / qty
-    const harga_per_pcs = qty > 0
-      ? ((qty + insheet - mesin.qty_threshold) * mesin.per_drug + mesin.harga_mesin) / qty
-      : 0
+    // Rumus: kalau qty+insheet < threshold → minimum harga_mesin
+    // kalau qty+insheet >= threshold → ((qty+insheet-threshold)*per_drug + harga_mesin) / qty
+    const total_biaya = (qty + insheet) >= mesin.qty_threshold
+      ? ((qty + insheet - mesin.qty_threshold) * mesin.per_drug + mesin.harga_mesin)
+      : mesin.harga_mesin
+    const harga_per_pcs = qty > 0 ? total_biaya / qty : 0
     const subtotal = harga_per_pcs * qty
     return { ...r, harga_per_pcs, harga_mesin: mesin.harga_mesin, per_drug: mesin.per_drug, qty_threshold: mesin.qty_threshold, subtotal }
   }), [cetak, dbMesin])
