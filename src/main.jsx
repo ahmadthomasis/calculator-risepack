@@ -8,6 +8,8 @@ import EstimatorQueue from './pages/EstimatorQueue'
 import Calculator from './pages/Calculator'
 import ManagerDashboard from './pages/ManagerDashboard'
 import PotongKertas from './pages/PotongKertas'
+import PricingDataset from './pages/PricingDataset'
+import UserManagement from './pages/UserManagement'
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth()
@@ -51,6 +53,8 @@ function RoleRouter() {
           <Route path="/estimator" element={<EstimatorQueue />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
+          <Route path="/pricing-dataset" element={<PricingDataset />} />
+          <Route path="/user-management" element={<UserManagement />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -67,4 +71,5 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 )
+
 
