@@ -72,7 +72,7 @@ export default function Calculator() {
       supabase.from('requests').select('*').eq('id', requestId).single(),
       supabase.from('raw_materials').select('*').eq('category','material').order('name'),
       supabase.from('raw_materials').select('id,name,spec,notes,price,harga_mesin,qty_threshold').eq('category','cetak').order('name'),
-      supabase.from('raw_materials').select('*').eq('category','emboss_laminasi').order('name'),
+      supabase.from('raw_materials').select('id,name,spec,notes,price,minimum_charge').eq('category','emboss_laminasi').order('name'),
       supabase.from('raw_materials').select('*').eq('category','material_proses').order('name'),
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
     ])
@@ -130,9 +130,9 @@ export default function Calculator() {
     } : { per_drug: 0, harga_mesin: 0, qty_threshold: 0 }
   }
 
-  function lookupEmbossPrice(prosesName) {
+  function lookupEmboss(prosesName) {
     const match = dbEmboss.find(m => m.name === prosesName)
-    return match ? match.price : 0
+    return match ? { harga: match.price || 0, minimum_charge: match.minimum_charge || 0 } : { harga: 0, minimum_charge: 0 }
   }
 
   // ── Get unique values from DB ─────────────────────────────
@@ -183,17 +183,18 @@ export default function Calculator() {
   }), [cetak, dbMesin])
 
   const calcEmboss = useCallback(() => emboss.map(r => {
-    const harga   = lookupEmbossPrice(r.proses)
+    const proc    = lookupEmboss(r.proses)
     const qty     = num(r.quantity)
     const insheet = num(r.insheet)
     // Parse luas_permukaan format "PxL" dalam cm
     const parts   = String(r.luas_permukaan || '').toLowerCase().split('x')
     const P       = num(parts[0])
     const L       = num(parts[1])
-    // Rumus: (P x L x harga x (qty+insheet)) / qty
-    const harga_per_pcs = qty > 0 ? (P * L * harga * (qty + insheet)) / qty : 0
-    const subtotal = harga_per_pcs * qty
-    return { ...r, harga_per_cm2: harga, harga_per_pcs, subtotal }
+    // Rumus: (P x L x harga x (qty+insheet)) / qty, minimum dikunci ke minimum_charge
+    const subtotal_calc = (P * L * proc.harga * (qty + insheet))
+    const subtotal = Math.max(subtotal_calc, proc.minimum_charge)
+    const harga_per_pcs = qty > 0 ? subtotal / qty : 0
+    return { ...r, harga_per_cm2: proc.harga, minimum_charge: proc.minimum_charge, harga_per_pcs, subtotal }
   }), [emboss, dbEmboss])
 
   const calcMatProses = useCallback(() => matProses.map(r => {
