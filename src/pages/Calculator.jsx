@@ -156,10 +156,18 @@ export default function Calculator() {
     const insheet      = num(r.insheet)
     const quantity     = num(r.quantity)
     const mata         = num(r.mata) || 1
-    // Harga/lembar: kalau custom plano → hitung dari harga/kg, kalau tidak → dari DB
-    const harga = r.plano === 'custom' && num(r.plano_w) > 0 && num(r.plano_h) > 0 && num(r.harga_kg) > 0
-      ? (num(r.plano_w) * num(r.plano_h) * num(r.gsm) * num(r.harga_kg)) / 20000 / 500
-      : lookupMaterialPrice(r.material, r.plano, r.gsm)
+    const isBusa       = r.material && r.material.toLowerCase().includes('busa')
+    // Harga/lembar: busa → ketebalan x rate_per_cm; custom plano → harga/kg; lainnya → DB
+    let harga
+    if (isBusa) {
+      const matchBusa = dbMaterials.find(m => m.name === r.material)
+      const rate = matchBusa ? (matchBusa.rate_per_cm || matchBusa.price || 0) : 0
+      harga = num(r.gsm) * rate
+    } else if (r.plano === 'custom' && num(r.plano_w) > 0 && num(r.plano_h) > 0 && num(r.harga_kg) > 0) {
+      harga = (num(r.plano_w) * num(r.plano_h) * num(r.gsm) * num(r.harga_kg)) / 20000 / 500
+    } else {
+      harga = lookupMaterialPrice(r.material, r.plano, r.gsm)
+    }
     // Rumus: ((qty + insheet) / plano_get / mata * harga) / qty
     const harga_per_pcs = (planoGet > 0 && quantity > 0 && insheet > 0)
       ? ((quantity + insheet) / planoGet / mata * harga) / quantity
@@ -311,8 +319,8 @@ export default function Calculator() {
                     </select>
                   </td>
                   <td style={s.td}>
-                    {row.plano === 'custom' ? (
-                      <input style={{ ...s.input, width:80 }} type="number" value={row.gsm} onChange={e => updater(setMaterial)(i,'gsm',e.target.value)} placeholder="GSM" />
+                    {(row.plano === 'custom' || (row.material && row.material.toLowerCase().includes('busa'))) ? (
+                      <input style={{ ...s.input, width:80 }} type="number" step="0.1" value={row.gsm} onChange={e => updater(setMaterial)(i,'gsm',e.target.value)} placeholder={row.material && row.material.toLowerCase().includes('busa') ? 'tebal(cm)' : 'GSM'} />
                     ) : (
                       <select style={{ ...s.select, width:80 }} value={row.gsm}
                         onChange={e => {
