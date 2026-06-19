@@ -21,6 +21,7 @@ export default function EstimatorQueue() {
   const [requests, setRequests] = useState([])
   const [filter, setFilter]     = useState('all')
   const [pulse, setPulse]       = useState(false)
+  const [searchTerm, setSearchTerm] = useState('')
 
   useEffect(() => {
     fetchRequests()
@@ -55,7 +56,8 @@ export default function EstimatorQueue() {
     await supabase.from('requests').update({ status:'cancelled' }).eq('id', id)
   }
 
-  const filtered = filter === 'all' ? requests : requests.filter(r => r.status === filter)
+  const filtered = (filter === 'all' ? requests : requests.filter(r => r.status === filter))
+    .filter(r => !searchTerm.trim() || (r.customer_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase()))
   const counts   = { all: requests.length, pending: 0, in_progress: 0, done: 0 }
   requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })
 
@@ -78,16 +80,25 @@ export default function EstimatorQueue() {
         <span style={{ fontSize:12, color:'#6b7280' }}>Live — update otomatis saat request masuk</span>
       </div>
 
-      {/* Filter tabs */}
-      <div style={{ display:'flex', gap:8, marginBottom:20 }}>
-        {[['all','Semua'],['pending','Menunggu'],['in_progress','Dikerjakan'],['done','Selesai']].map(([val,label]) => (
-          <button key={val} onClick={() => setFilter(val)} style={{
-            padding:'6px 16px', borderRadius:20, fontSize:13, cursor:'pointer', fontWeight:500,
-            background: filter===val ? '#2563eb' : '#fff',
-            color: filter===val ? '#fff' : '#6b7280',
-            border: filter===val ? '1px solid #2563eb' : '1px solid #e5e7eb'
-          }}>{label} <span style={{ opacity:0.7 }}>({counts[val] ?? 0})</span></button>
-        ))}
+      {/* Filter tabs + search */}
+      <div style={{ display:'flex', gap:8, marginBottom:20, alignItems:'center', flexWrap:'wrap', justifyContent:'space-between' }}>
+        <div style={{ display:'flex', gap:8 }}>
+          {[['all','Semua'],['pending','Menunggu'],['in_progress','Dikerjakan'],['done','Selesai']].map(([val,label]) => (
+            <button key={val} onClick={() => setFilter(val)} style={{
+              padding:'6px 16px', borderRadius:20, fontSize:13, cursor:'pointer', fontWeight:500,
+              background: filter===val ? '#2563eb' : '#fff',
+              color: filter===val ? '#fff' : '#6b7280',
+              border: filter===val ? '1px solid #2563eb' : '1px solid #e5e7eb'
+            }}>{label} <span style={{ opacity:0.7 }}>({counts[val] ?? 0})</span></button>
+          ))}
+        </div>
+        <input
+          type="text"
+          placeholder="Cari nama customer..."
+          value={searchTerm}
+          onChange={e => setSearchTerm(e.target.value)}
+          style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, width:220, outline:'none' }}
+        />
       </div>
 
       <div style={s.card}>
