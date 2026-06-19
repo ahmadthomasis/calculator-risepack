@@ -599,7 +599,7 @@ export default function Calculator() {
                   {row.proses === 'potong' ? (
                     <div style={{ display:'flex', gap:4 }}>
                       <input style={{ ...s.input, width:70 }} type="text" placeholder="PxL cm" value={row.luas_permukaan} onChange={e => updater(setAdditional)(i,'luas_permukaan',e.target.value)} />
-                      <input style={{ ...s.input, width:60 }} type="number" placeholder="gsm" value={row.gramasi} onChange={e => updater(setAdditional)(i,'gramasi',e.target.value)} />
+                      <input style={{ ...s.input, width:80 }} type="number" placeholder="gsm" value={row.gramasi} onChange={e => updater(setAdditional)(i,'gramasi',e.target.value)} />
                     </div>
                   ) : row.proses === 'lem samping' ? (
                     <input style={{ ...s.input, width:100 }} type="number" placeholder="panjang(cm)" value={row.panjang_lem} onChange={e => updater(setAdditional)(i,'panjang_lem',e.target.value)} />
