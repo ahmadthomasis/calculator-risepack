@@ -45,6 +45,7 @@ export default function Calculator() {
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
   const [margin,   setMargin]   = useState(15)
+  const [diskon,   setDiskon]   = useState(0)
   const [dbMaterials, setDbMaterials] = useState([])
   const [dbMesin,     setDbMesin]     = useState([])
   const [dbEmboss,    setDbEmboss]    = useState([])
@@ -105,6 +106,7 @@ export default function Calculator() {
       setFinishing(quot.finishing_wo || [])
       setAdditional(quot.additional_cost || [])
       setMargin(quot.margin_percent || 15)
+      setDiskon(quot.diskon_percent || 0)
     }
     setLoading(false)
   }
@@ -279,7 +281,9 @@ export default function Calculator() {
   }
   const total   = Object.values(sub).reduce((a, b) => a + b, 0)
   const selling = total * (1 + num(margin) / 100)
-  const perUnit = request?.quantity ? selling / request.quantity : 0
+  const diskonAmount = selling * (num(diskon) / 100)
+  const sellingAfterDiskon = selling - diskonAmount
+  const perUnit = request?.quantity ? sellingAfterDiskon / request.quantity : 0
 
   async function handleSave() {
     setSaving(true)
@@ -291,7 +295,8 @@ export default function Calculator() {
       material_proses: mpCalc, finishing_wo: finCalc, additional_cost: additional,
       subtotal_material: sub.material, subtotal_cetak: sub.cetak, subtotal_emboss: sub.emboss,
       subtotal_matproses: sub.matProses, subtotal_finishing: sub.finishing, subtotal_additional: sub.additional,
-      total_cost: total, margin_percent: num(margin), selling_price: Math.round(selling),
+      total_cost: total, margin_percent: num(margin), diskon_percent: num(diskon),
+      selling_price: Math.round(sellingAfterDiskon),
       price_per_unit: perUnit, deal_status: 'quoted',
     })
     if (!error) {
@@ -640,6 +645,17 @@ export default function Calculator() {
             <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', fontSize:14, fontWeight:700, color:C.dark, borderTop:`2px solid ${C.border}`, marginTop:4 }}>
               <span>Total Modal</span><span>{idr(total)}</span>
             </div>
+            <div style={{ marginTop:16, paddingTop:16, borderTop:`1px dashed ${C.border}` }}>
+              <label style={{ fontSize:13, color:C.brown, display:'block', marginBottom:6 }}>Diskon (%)</label>
+              <input type="number" min="0" max="100" value={diskon}
+                onChange={e => setDiskon(e.target.value)}
+                style={{ ...s.input, width:100, fontSize:16, fontWeight:600 }} />
+              {num(diskon) > 0 && (
+                <div style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', fontSize:13, color:'#dc2626', marginTop:8 }}>
+                  <span>Potongan Diskon</span><span style={{ fontFamily:'monospace' }}>- {idr(diskonAmount)}</span>
+                </div>
+              )}
+            </div>
           </div>
           <div>
             <div style={{ fontSize:14, fontWeight:600, color:C.dark, marginBottom:12 }}>Harga Jual</div>
@@ -648,8 +664,11 @@ export default function Calculator() {
               onChange={e => setMargin(e.target.value)}
               style={{ ...s.input, width:100, fontSize:16, fontWeight:600, marginBottom:16 }} />
             <div style={{ background:'#f0fdf4', borderRadius:8, padding:16 }}>
-              <div style={{ fontSize:12, color:'#16a34a', marginBottom:4 }}>Harga Jual Total</div>
-              <div style={{ fontSize:26, fontWeight:700, color:'#15803d' }}>{idr(selling)}</div>
+              <div style={{ fontSize:12, color:'#16a34a', marginBottom:4 }}>Harga Jual Total{num(diskon) > 0 ? ' (setelah diskon)' : ''}</div>
+              <div style={{ fontSize:26, fontWeight:700, color:'#15803d' }}>{idr(sellingAfterDiskon)}</div>
+              {num(diskon) > 0 && (
+                <div style={{ fontSize:12, color:'#9ca3af', textDecoration:'line-through', marginTop:2 }}>{idr(selling)}</div>
+              )}
               <div style={{ fontSize:13, color:'#16a34a', marginTop:6 }}>
                 Per unit: {idr(perUnit)} &nbsp;|&nbsp; Qty: {fmt(request.quantity)}
               </div>
