@@ -16,8 +16,25 @@ const managerTabs = [
   { path: '/estimator', label: 'Estimator' },
 ]
 
-const toolLinks = [
-  { path: '/potong-kertas', label: 'Potong Kertas' },
+const HomeIcon = ({ active }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 11.5 12 4l9 7.5" />
+    <path d="M5.5 10v9a1 1 0 0 0 1 1H9a1 1 0 0 0 1-1v-4a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1v4a1 1 0 0 0 1 1h2.5a1 1 0 0 0 1-1v-9" />
+  </svg>
+)
+
+const CutIcon = ({ active }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="6" cy="6" r="2.5" />
+    <circle cx="6" cy="18" r="2.5" />
+    <line x1="8.5" y1="7.5" x2="20" y2="19" />
+    <line x1="20" y1="5" x2="11.5" y2="13.5" />
+    <line x1="8" y1="16.5" x2="9.5" y2="15" />
+  </svg>
+)
+
+const sidebarItems = [
+  { path: '/potong-kertas', label: 'Potong Kertas', Icon: CutIcon },
 ]
 
 export default function Layout({ children, title }) {
@@ -25,106 +42,132 @@ export default function Layout({ children, title }) {
   const navigate = useNavigate()
   const location = useLocation()
 
+  const isHomeActive = location.pathname === '/'
+
   return (
-    <div style={{ minHeight:'100vh', background:'#F5EFE6' }}>
-      <nav style={{
+    <div style={{ minHeight:'100vh', background:'#F5EFE6', display:'flex' }}>
+
+      {/* ── Sidebar kiri ───────────────────────────────────── */}
+      <aside style={{
+        width:84,
         background: C.dark,
-        borderBottom:`3px solid ${C.orange}`,
-        padding:'0 24px',
-        display:'flex', alignItems:'center',
-        justifyContent:'space-between', height:58
+        borderRight:`3px solid ${C.orange}`,
+        display:'flex',
+        flexDirection:'column',
+        alignItems:'center',
+        flexShrink:0,
+        paddingTop:18,
+        gap:6,
       }}>
-        <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-          {/* Logo text */}
-          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-            <span style={{ fontSize:22, fontWeight:800, color:'#fff', letterSpacing:'-0.5px' }}>Rise</span>
-            <span style={{ fontSize:22, fontWeight:800, color:C.orange, letterSpacing:'-0.5px' }}>pack</span>
+        <div style={{ display:'flex', flexDirection:'column', alignItems:'center', marginBottom:18 }}>
+          <span style={{ fontSize:16, fontWeight:800, color:'#fff', letterSpacing:'-0.5px', lineHeight:1.1 }}>Rise</span>
+          <span style={{ fontSize:16, fontWeight:800, color:C.orange, letterSpacing:'-0.5px', lineHeight:1.1 }}>pack</span>
+        </div>
+
+        <button
+          onClick={() => navigate('/')}
+          style={{
+            width:64, display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+            padding:'10px 4px', borderRadius:10, border:'none', cursor:'pointer',
+            background: isHomeActive ? C.orange : 'transparent',
+            transition:'background 0.15s',
+          }}
+        >
+          <HomeIcon active={isHomeActive} />
+          <span style={{ fontSize:10.5, fontWeight:600, color: isHomeActive ? '#fff' : 'rgba(255,255,255,0.55)' }}>Home</span>
+        </button>
+
+        {sidebarItems.map(item => {
+          const active = location.pathname === item.path
+          const { Icon } = item
+          return (
+            <button
+              key={item.path}
+              onClick={() => navigate(item.path)}
+              style={{
+                width:64, display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+                padding:'10px 4px', borderRadius:10, border:'none', cursor:'pointer',
+                background: active ? C.orange : 'transparent',
+                transition:'background 0.15s',
+              }}
+            >
+              <Icon active={active} />
+              <span style={{ fontSize:10.5, fontWeight:600, color: active ? '#fff' : 'rgba(255,255,255,0.55)', textAlign:'center', lineHeight:1.2 }}>{item.label}</span>
+            </button>
+          )
+        })}
+      </aside>
+
+      {/* ── Area kanan: topbar + konten ───────────────────── */}
+      <div style={{ flex:1, minWidth:0, display:'flex', flexDirection:'column' }}>
+        <nav style={{
+          background: C.dark,
+          borderBottom:`3px solid ${C.orange}`,
+          padding:'0 24px',
+          display:'flex', alignItems:'center',
+          justifyContent:'space-between', height:58,
+          flexShrink:0,
+        }}>
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            <span style={{ fontSize:13, color:'rgba(255,255,255,0.6)' }}>Calculator</span>
+            {title && (
+              <>
+                <span style={{ color:'rgba(255,255,255,0.3)' }}>›</span>
+                <span style={{ fontSize:13, color:'rgba(255,255,255,0.8)' }}>{title}</span>
+              </>
+            )}
           </div>
-          <div style={{ width:1, height:20, background:'rgba(255,255,255,0.2)' }} />
-          <span style={{ fontSize:13, color:'rgba(255,255,255,0.6)' }}>Calculator</span>
-          {title && (
-            <>
-              <span style={{ color:'rgba(255,255,255,0.3)' }}>›</span>
-              <span style={{ fontSize:13, color:'rgba(255,255,255,0.8)' }}>{title}</span>
-            </>
-          )}
-        </div>
 
-        <div style={{ display:'flex', alignItems:'center', gap:4 }}>
-          {profile?.role === 'manager' && managerTabs.map(tab => {
-            const active = location.pathname === tab.path
-            return (
-              <button
-                key={tab.path}
-                onClick={() => navigate(tab.path)}
-                style={{
-                  padding:'6px 14px',
-                  fontSize:13,
-                  fontWeight:600,
-                  borderRadius:8,
-                  border:'1px solid rgba(255,255,255,0.18)',
-                  cursor:'pointer',
-                  background: active ? C.orange : 'rgba(255,255,255,0.06)',
-                  color: active ? '#fff' : 'rgba(255,255,255,0.75)',
-                  transition:'background 0.15s'
-                }}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-
-          {profile?.role === 'manager' && toolLinks.length > 0 && (
-            <div style={{ width:1, height:20, background:'rgba(255,255,255,0.15)', margin:'0 4px' }} />
-          )}
-
-          {toolLinks.map(tab => {
-            const active = location.pathname === tab.path
-            return (
-              <button
-                key={tab.path}
-                onClick={() => navigate(tab.path)}
-                style={{
-                  padding:'6px 14px',
-                  fontSize:13,
-                  fontWeight:600,
-                  borderRadius:8,
-                  border:'1px solid rgba(255,255,255,0.18)',
-                  cursor:'pointer',
-                  background: active ? C.orange : 'rgba(255,255,255,0.06)',
-                  color: active ? '#fff' : 'rgba(255,255,255,0.75)',
-                  transition:'background 0.15s'
-                }}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
-
-        <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-          {profile && (
-            <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{
-                padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:600,
-                background: C.orange, color:'#fff'
-              }}>{roleLabel[profile.role]}</span>
-              <span style={{ fontSize:13, color:'rgba(255,255,255,0.85)' }}>{profile.full_name}</span>
+          {profile?.role === 'manager' && (
+            <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+              {managerTabs.map(tab => {
+                const active = location.pathname === tab.path
+                return (
+                  <button
+                    key={tab.path}
+                    onClick={() => navigate(tab.path)}
+                    style={{
+                      padding:'6px 14px',
+                      fontSize:13,
+                      fontWeight:600,
+                      borderRadius:8,
+                      border:'1px solid rgba(255,255,255,0.18)',
+                      cursor:'pointer',
+                      background: active ? C.orange : 'rgba(255,255,255,0.06)',
+                      color: active ? '#fff' : 'rgba(255,255,255,0.75)',
+                      transition:'background 0.15s'
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                )
+              })}
             </div>
           )}
-          <button onClick={signOut} style={{
-            padding:'6px 14px', fontSize:13,
-            border:'1px solid rgba(255,255,255,0.25)',
-            borderRadius:8, cursor:'pointer',
-            background:'rgba(255,255,255,0.08)',
-            color:'rgba(255,255,255,0.8)'
-          }}>Keluar</button>
-        </div>
-      </nav>
-      <main style={{ padding:24 }}>
-        {children}
-      </main>
+
+          <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+            {profile && (
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <span style={{
+                  padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:600,
+                  background: C.orange, color:'#fff'
+                }}>{roleLabel[profile.role]}</span>
+                <span style={{ fontSize:13, color:'rgba(255,255,255,0.85)' }}>{profile.full_name}</span>
+              </div>
+            )}
+            <button onClick={signOut} style={{
+              padding:'6px 14px', fontSize:13,
+              border:'1px solid rgba(255,255,255,0.25)',
+              borderRadius:8, cursor:'pointer',
+              background:'rgba(255,255,255,0.08)',
+              color:'rgba(255,255,255,0.8)'
+            }}>Keluar</button>
+          </div>
+        </nav>
+        <main style={{ padding:24, flex:1, minWidth:0 }}>
+          {children}
+        </main>
+      </div>
     </div>
   )
 }
-
