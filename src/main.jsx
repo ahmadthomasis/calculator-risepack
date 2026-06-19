@@ -7,6 +7,7 @@ import SalesDashboard from './pages/SalesDashboard'
 import EstimatorQueue from './pages/EstimatorQueue'
 import Calculator from './pages/Calculator'
 import ManagerDashboard from './pages/ManagerDashboard'
+import PotongKertas from './pages/PotongKertas'
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth()
@@ -31,6 +32,7 @@ function RoleRouter() {
       {profile.role === 'sales' && (
         <>
           <Route path="/" element={<SalesDashboard />} />
+          <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -38,6 +40,7 @@ function RoleRouter() {
         <>
           <Route path="/" element={<EstimatorQueue />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
+          <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -47,6 +50,7 @@ function RoleRouter() {
           <Route path="/sales" element={<SalesDashboard />} />
           <Route path="/estimator" element={<EstimatorQueue />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
+          <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -63,3 +67,4 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 )
+
