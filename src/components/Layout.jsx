@@ -1,4 +1,5 @@
 import { useAuth } from '../lib/AuthContext'
+import { useNavigate, useLocation } from 'react-router-dom'
 
 const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager' }
 const C = {
@@ -9,8 +10,16 @@ const C = {
   border: '#E8D5BC',
 }
 
+const managerTabs = [
+  { path: '/',          label: 'Manager' },
+  { path: '/sales',     label: 'Sales' },
+  { path: '/estimator', label: 'Estimator' },
+]
+
 export default function Layout({ children, title }) {
   const { profile, signOut } = useAuth()
+  const navigate = useNavigate()
+  const location = useLocation()
 
   return (
     <div style={{ minHeight:'100vh', background:'#F5EFE6' }}>
@@ -36,6 +45,34 @@ export default function Layout({ children, title }) {
             </>
           )}
         </div>
+
+        {profile?.role === 'manager' && (
+          <div style={{ display:'flex', alignItems:'center', gap:4 }}>
+            {managerTabs.map(tab => {
+              const active = location.pathname === tab.path
+              return (
+                <button
+                  key={tab.path}
+                  onClick={() => navigate(tab.path)}
+                  style={{
+                    padding:'6px 14px',
+                    fontSize:13,
+                    fontWeight:600,
+                    borderRadius:8,
+                    border:'1px solid rgba(255,255,255,0.18)',
+                    cursor:'pointer',
+                    background: active ? C.orange : 'rgba(255,255,255,0.06)',
+                    color: active ? '#fff' : 'rgba(255,255,255,0.75)',
+                    transition:'background 0.15s'
+                  }}
+                >
+                  {tab.label}
+                </button>
+              )
+            })}
+          </div>
+        )}
+
         <div style={{ display:'flex', alignItems:'center', gap:14 }}>
           {profile && (
             <div style={{ display:'flex', alignItems:'center', gap:8 }}>
