@@ -10,7 +10,7 @@ const idr  = n => 'Rp ' + fmt(Math.round(n))
 
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
 
-const PLANO_OPTIONS = ['79x109','65x100','90x120','90x100','77x66','75x100','70x100','custom']
+const PLANO_OPTIONS = ['79x109','65x100','90x120','90x100','77x66','75x100','70x100','120x200','custom']
 const WARNA_OPTIONS = ['1 warna','2 warna','4 warna','4 warna + 1 spesial','5 warna']
 
 const s = {
@@ -313,7 +313,11 @@ export default function Calculator() {
                   <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setMaterial)(i,'nama',e.target.value)} placeholder="cover" /></td>
                   <td style={s.td}>
                     <select style={{ ...s.select, width:160 }} value={row.material}
-                      onChange={e => setMaterial(p => p.map((r,idx) => idx===i ? {...r, material:e.target.value, gsm:'', plano:'79x109'} : r))}>
+                      onChange={e => {
+                        const val = e.target.value
+                        const isBusaSel = val.toLowerCase().includes('busa')
+                        setMaterial(p => p.map((r,idx) => idx===i ? {...r, material:val, gsm:'', plano: isBusaSel ? '120x200' : '79x109'} : r))
+                      }}>
                       <option value="">-- pilih --</option>
                       {materialNames.map(n => <option key={n}>{n}</option>)}
                     </select>
@@ -335,7 +339,9 @@ export default function Calculator() {
                     )}
                   </td>
                   <td style={s.td}>
-                    {row.plano === 'custom' ? (
+                    {(row.material && row.material.toLowerCase().includes('busa')) ? (
+                      <div style={s.calc}>120x200</div>
+                    ) : row.plano === 'custom' ? (
                       <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
                         <select style={{ ...s.select, width:80 }} value={row.plano} onChange={e => updater(setMaterial)(i,'plano',e.target.value)}>
                           {PLANO_OPTIONS.map(p => <option key={p}>{p}</option>)}
