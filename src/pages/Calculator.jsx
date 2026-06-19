@@ -30,7 +30,7 @@ const s = {
 // ── Row factories ─────────────────────────────────────────────
 const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', harga_kg:0, luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
 const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:'', insheet:0, harga_per_lembar:0 })
-const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:0, insheet:0, harga_per_cm2:0 })
+const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:'', insheet:0, harga_per_cm2:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1 })
 const newFinishing = () => ({ id:Date.now(), nama:'', proses:'', spesifik:'', harga_satuan:0 })
 const newAdditional= () => ({ id:Date.now(), nama:'', keterangan:'', harga:0 })
@@ -183,10 +183,17 @@ export default function Calculator() {
   }), [cetak, dbMesin])
 
   const calcEmboss = useCallback(() => emboss.map(r => {
-    const harga    = num(r.harga_per_cm2) > 0 ? num(r.harga_per_cm2) : lookupEmbossPrice(r.proses)
-    const luasCm2  = num(r.luas_permukaan) * 10000 // m² → cm²
-    const subtotal = num(r.quantity) * luasCm2 * harga
-    return { ...r, harga_per_cm2: harga, subtotal }
+    const harga   = lookupEmbossPrice(r.proses)
+    const qty     = num(r.quantity)
+    const insheet = num(r.insheet)
+    // Parse luas_permukaan format "PxL" dalam cm
+    const parts   = String(r.luas_permukaan || '').toLowerCase().split('x')
+    const P       = num(parts[0])
+    const L       = num(parts[1])
+    // Rumus: (P x L x harga x (qty+insheet)) / qty
+    const harga_per_pcs = qty > 0 ? (P * L * harga * (qty + insheet)) / qty : 0
+    const subtotal = harga_per_pcs * qty
+    return { ...r, harga_per_cm2: harga, harga_per_pcs, subtotal }
   }), [emboss, dbEmboss])
 
   const calcMatProses = useCallback(() => matProses.map(r => {
@@ -404,10 +411,10 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Qty','Luas (m²)','Harga/cm²','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Qty','Insheet','Luas Permukaan','Harga/pcs','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {emboss.length === 0 && <tr><td colSpan={7} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
+            {emboss.length === 0 && <tr><td colSpan={8} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
             {embCalc.map((row,i) => (
               <tr key={row.id}>
                 <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setEmboss)(i,'nama',e.target.value)} /></td>
@@ -417,8 +424,9 @@ export default function Calculator() {
                   </select>
                 </td>
                 <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.quantity} onChange={e => updater(setEmboss)(i,'quantity',e.target.value)} /></td>
-                <td style={s.td}><input style={{ ...s.input, width:90 }} type="number" step="0.001" value={row.luas_permukaan} onChange={e => updater(setEmboss)(i,'luas_permukaan',e.target.value)} /></td>
-                <td style={s.td}><div style={{ ...s.calc, color:'#16a34a' }}>{row.harga_per_cm2}</div></td>
+                <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setEmboss)(i,'insheet',e.target.value)} /></td>
+                <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setEmboss)(i,'luas_permukaan',e.target.value)} placeholder="20x20" /></td>
+                <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => setEmboss(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>
               </tr>
