@@ -99,7 +99,7 @@ export default function SalesDashboard() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft)')
+      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, purchasing_status, purchasing_notes)')
       .order('submitted_at', { ascending: false })
     setRequests(data || [])
   }
@@ -482,14 +482,14 @@ export default function SalesDashboard() {
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead>
             <tr>
-              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal','Aksi'].map(h => (
+              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal','Purchasing','Aksi'].map(h => (
                 <th key={h} style={s.th}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredRequests.length === 0 && (
-              <tr><td colSpan={10} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
+              <tr><td colSpan={11} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
                 {requests.length === 0 ? 'Belum ada request. Klik "+ Request Harga Baru" untuk mulai.' : 'Tidak ada customer yang cocok dengan pencarian.'}
               </td></tr>
             )}
@@ -580,6 +580,28 @@ export default function SalesDashboard() {
                               <option value="no_deal">No Deal ❌</option>
                               <option value="followup">Followup 🔄</option>
                             </select>
+                          </div>
+                        ) : null)}
+                      </div>
+                    ) : <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>}
+                  </td>
+                  <td style={s.td}>
+                    {rows.some(row => row.q?.purchasing_status) ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {rows.map((row, i) => row.q?.purchasing_status ? (
+                          <div key={i}>
+                            {rows.length > 1 && (
+                              <span style={{ fontSize:10, color:'#9ca3af', marginRight:4 }}>
+                                {row.qty.toLocaleString('id-ID')}:
+                              </span>
+                            )}
+                            <span style={{
+                              padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500,
+                              background: { pending:'#d9770618', approved:'#16a34a18', hold:'#d9770618', cancelled:'#dc262618' }[row.q.purchasing_status],
+                              color: { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }[row.q.purchasing_status],
+                            }} title={row.q.purchasing_notes || ''}>
+                              {{ pending:'Menunggu', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }[row.q.purchasing_status]}
+                            </span>
                           </div>
                         ) : null)}
                       </div>
