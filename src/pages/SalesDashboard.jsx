@@ -22,6 +22,9 @@ const FINISHING_OPTIONS = [
 const STATUS_LABEL = { pending:'Menunggu', in_progress:'Dikerjakan', done:'Selesai', cancelled:'Dibatalkan' }
 const STATUS_COLOR = { pending:'#E8760A', in_progress:'#2563eb', done:'#2d6a2d', cancelled:'#9ca3af' }
 
+const DEAL_LABEL = { quoted:'Belum Diisi', deal:'Deal ✅', no_deal:'No Deal ❌', followup:'Followup 🔄' }
+const DEAL_COLOR = { quoted:'#9ca3af', deal:'#16a34a', no_deal:'#dc2626', followup:'#d97706' }
+
 // Brand colors
 const C = {
   dark:   '#2C1810',
@@ -70,6 +73,7 @@ export default function SalesDashboard() {
   const [showForm, setShowForm]   = useState(false)
   const [uploading, setUploading] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
+  const [searchTerm, setSearchTerm] = useState('')
   const fileRef = useRef()
 
   useEffect(() => { fetchRequests() }, [])
@@ -77,9 +81,14 @@ export default function SalesDashboard() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, quotations(deal_status, selling_price)')
+      .select('*, quotations(id, deal_status, selling_price, price_per_unit, updated_at)')
       .order('submitted_at', { ascending: false })
     setRequests(data || [])
+  }
+
+  async function updateDealStatus(quotationId, newStatus) {
+    await supabase.from('quotations').update({ deal_status: newStatus, updated_at: new Date().toISOString() }).eq('id', quotationId)
+    fetchRequests()
   }
 
   function toggleFinishing(item) {
@@ -140,6 +149,9 @@ export default function SalesDashboard() {
   const progress = requests.filter(r => r.status === 'in_progress').length
   const done     = requests.filter(r => r.status === 'done').length
   const subtypes = PRODUCT_TYPES[form.product_category] || []
+  const filteredRequests = requests.filter(r =>
+    !searchTerm.trim() || (r.customer_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase())
+  )
 
   return (
     <Layout title="Request Harga">
@@ -163,11 +175,20 @@ export default function SalesDashboard() {
         </div>
       )}
 
-      <div style={{ marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+      <div style={{ marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
         <div style={{ fontSize:16, fontWeight:600, color:C.dark }}>Request Harga Saya</div>
-        <button style={s.btnPrimary} onClick={() => setShowForm(!showForm)}>
-          {showForm ? 'Tutup Form' : '+ Request Harga Baru'}
-        </button>
+        <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          <input
+            type="text"
+            placeholder="Cari nama customer..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ padding:'8px 14px', borderRadius:8, border:`1px solid ${C.border}`, fontSize:13, width:200, outline:'none', color:C.dark }}
+          />
+          <button style={s.btnPrimary} onClick={() => setShowForm(!showForm)}>
+            {showForm ? 'Tutup Form' : '+ Request Harga Baru'}
+          </button>
+        </div>
       </div>
 
       {/* Form */}
@@ -304,49 +325,72 @@ export default function SalesDashboard() {
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead>
             <tr>
-              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga'].map(h => (
+              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal'].map(h => (
                 <th key={h} style={s.th}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {requests.length === 0 && (
-              <tr><td colSpan={8} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
-                Belum ada request. Klik "+ Request Harga Baru" untuk mulai.
+            {filteredRequests.length === 0 && (
+              <tr><td colSpan={9} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
+                {requests.length === 0 ? 'Belum ada request. Klik "+ Request Harga Baru" untuk mulai.' : 'Tidak ada customer yang cocok dengan pencarian.'}
               </td></tr>
             )}
-            {requests.map(r => (
-              <tr key={r.id}>
-                <td style={s.td}><span style={{ fontFamily:'monospace', fontSize:12, color:C.brown }}>{r.request_number}</span></td>
-                <td style={s.td}><div style={{ fontWeight:500 }}>{r.customer_name}</div></td>
-                <td style={s.td}>
-                  <div style={{ fontSize:13 }}>{r.product_type}</div>
-                  {r.reference_image && (
-                    <a href={r.reference_image} target="_blank" rel="noreferrer"
-                      style={{ fontSize:11, color:C.orange }}>🖼️ Lihat gambar</a>
-                  )}
-                </td>
-                <td style={s.td}>{r.quantity?.toLocaleString('id-ID')}</td>
-                <td style={s.td}><span style={s.badge(r.status)}>{STATUS_LABEL[r.status]}</span></td>
-                <td style={s.td}>
-                  {r.priority === 'urgent'
-                    ? <span style={{ color:'#dc2626', fontSize:12, fontWeight:500 }}>🔴 Urgent</span>
-                    : <span style={{ color:'#9ca3af', fontSize:12 }}>Normal</span>}
-                </td>
-                <td style={s.td}>{new Date(r.submitted_at).toLocaleDateString('id-ID')}</td>
-                <td style={s.td}>
-                  {r.quotations?.[0]?.selling_price
-                    ? <span style={{ fontWeight:600, color:'#2d6a2d' }}>
-                        Rp {r.quotations[0].selling_price.toLocaleString('id-ID')}
-                      </span>
-                    : <span style={{ color:'#9ca3af' }}>—</span>
-                  }
-                </td>
-              </tr>
-            ))}
+            {filteredRequests.map(r => {
+              const q = r.quotations?.[0]
+              return (
+                <tr key={r.id}>
+                  <td style={s.td}><span style={{ fontFamily:'monospace', fontSize:12, color:C.brown }}>{r.request_number}</span></td>
+                  <td style={s.td}><div style={{ fontWeight:500 }}>{r.customer_name}</div></td>
+                  <td style={s.td}>
+                    <div style={{ fontSize:13 }}>{r.product_type}</div>
+                    {r.reference_image && (
+                      <a href={r.reference_image} target="_blank" rel="noreferrer"
+                        style={{ fontSize:11, color:C.orange }}>🖼️ Lihat gambar</a>
+                    )}
+                  </td>
+                  <td style={s.td}>{r.quantity?.toLocaleString('id-ID')}</td>
+                  <td style={s.td}><span style={s.badge(r.status)}>{STATUS_LABEL[r.status]}</span></td>
+                  <td style={s.td}>
+                    {r.priority === 'urgent'
+                      ? <span style={{ color:'#dc2626', fontSize:12, fontWeight:500 }}>🔴 Urgent</span>
+                      : <span style={{ color:'#9ca3af', fontSize:12 }}>Normal</span>}
+                  </td>
+                  <td style={s.td}>{new Date(r.submitted_at).toLocaleDateString('id-ID')}</td>
+                  <td style={s.td}>
+                    {q?.selling_price ? (
+                      <div>
+                        <div style={{ fontWeight:600, color:'#2d6a2d' }}>Rp {q.selling_price.toLocaleString('id-ID')}</div>
+                        {q.price_per_unit && (
+                          <div style={{ fontSize:11, color:'#9ca3af' }}>Rp {Math.round(q.price_per_unit).toLocaleString('id-ID')} /pcs</div>
+                        )}
+                      </div>
+                    ) : <span style={{ color:'#9ca3af' }}>—</span>}
+                  </td>
+                  <td style={s.td}>
+                    {r.status === 'done' && q ? (
+                      <select
+                        value={q.deal_status || 'quoted'}
+                        onChange={e => updateDealStatus(q.id, e.target.value)}
+                        style={{
+                          padding:'5px 8px', borderRadius:6, fontSize:12, border:`1px solid ${C.border}`,
+                          background:'#fff', color: DEAL_COLOR[q.deal_status] || '#9ca3af', fontWeight:500,
+                        }}
+                      >
+                        <option value="quoted">Belum Diisi</option>
+                        <option value="deal">Deal ✅</option>
+                        <option value="no_deal">No Deal ❌</option>
+                        <option value="followup">Followup 🔄</option>
+                      </select>
+                    ) : <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>
     </Layout>
   )
 }
+
