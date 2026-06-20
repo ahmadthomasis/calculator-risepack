@@ -33,6 +33,15 @@ export default function ManagerDashboard() {
 
   useEffect(() => { loadData() }, [range])
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('manager-dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => loadData())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, () => loadData())
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [range])
+
   async function loadData() {
     setLoading(true)
     const since = new Date()
@@ -197,4 +206,5 @@ export default function ManagerDashboard() {
     </Layout>
   )
 }
+
 
