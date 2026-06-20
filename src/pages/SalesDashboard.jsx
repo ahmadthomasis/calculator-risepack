@@ -1,4 +1,3 @@
-import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
@@ -74,6 +73,8 @@ export default function SalesDashboard() {
   const [uploading, setUploading] = useState(false)
   const [previewUrl, setPreviewUrl] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
+  const [editingId, setEditingId] = useState(null)
+  const [editingStatus, setEditingStatus] = useState(null)
   const fileRef = useRef()
 
   useEffect(() => { fetchRequests() }, [])
@@ -100,6 +101,36 @@ export default function SalesDashboard() {
     }))
   }
 
+  function startEdit(r) {
+    setForm({
+      customer_name: r.customer_name || '',
+      product_category: Object.keys(PRODUCT_TYPES).find(k => PRODUCT_TYPES[k].includes(r.product_type)) || 'Hardbox',
+      product_type: r.product_type || '',
+      quantity: String(r.quantity || ''),
+      priority: r.priority || 'normal',
+      product_size: r.product_size || '',
+      luas_permukaan: r.plano_size || '',
+      material_spec: r.material_spec || '',
+      print_spec: r.print_spec || '',
+      finishing: r.finishing_spec ? r.finishing_spec.split(', ').filter(Boolean) : [],
+      notes: r.notes || '',
+      image_url: r.reference_image || '',
+    })
+    setPreviewUrl(r.reference_image || '')
+    setEditingId(r.id)
+    setEditingStatus(r.status)
+    setShowForm(true)
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  function cancelEdit() {
+    setEditingId(null)
+    setEditingStatus(null)
+    setForm(emptyForm)
+    setPreviewUrl('')
+    setShowForm(false)
+  }
+
   async function handleImageUpload(e) {
     const file = e.target.files[0]
     if (!file) return
@@ -120,7 +151,7 @@ export default function SalesDashboard() {
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
-    const { error } = await supabase.from('requests').insert({
+    const payload = {
       customer_name:  form.customer_name,
       product_type:   form.product_type,
       quantity:       parseInt(form.quantity),
@@ -132,13 +163,19 @@ export default function SalesDashboard() {
       notes:          form.notes,
       reference_image: form.image_url,
       plano_size:     form.luas_permukaan,
-      sales_id:       profile.id,
-    })
+    }
+
+    const { error } = editingId
+      ? await supabase.from('requests').update(payload).eq('id', editingId)
+      : await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
+
     if (!error) {
       setSuccess(true)
       setForm(emptyForm)
       setPreviewUrl('')
       setShowForm(false)
+      setEditingId(null)
+      setEditingStatus(null)
       fetchRequests()
       setTimeout(() => setSuccess(false), 4000)
     }
@@ -185,7 +222,7 @@ export default function SalesDashboard() {
             onChange={e => setSearchTerm(e.target.value)}
             style={{ padding:'8px 14px', borderRadius:8, border:`1px solid ${C.border}`, fontSize:13, width:200, outline:'none', color:C.dark }}
           />
-          <button style={s.btnPrimary} onClick={() => setShowForm(!showForm)}>
+          <button style={s.btnPrimary} onClick={() => showForm ? cancelEdit() : setShowForm(true)}>
             {showForm ? 'Tutup Form' : '+ Request Harga Baru'}
           </button>
         </div>
@@ -195,8 +232,21 @@ export default function SalesDashboard() {
       {showForm && (
         <div style={s.card}>
           <div style={{ fontSize:16, fontWeight:600, color:C.dark, marginBottom:20, paddingBottom:12, borderBottom:`1px solid ${C.border}` }}>
-            Form Permintaan Harga
+            {editingId ? 'Edit Request Harga' : 'Form Permintaan Harga'}
           </div>
+
+          {editingId && (editingStatus === 'in_progress' || editingStatus === 'done') && (
+            <div style={{
+              background:'#fffbeb', border:'1px solid #fde68a', borderRadius:8, padding:'12px 16px',
+              marginBottom:20, color:'#92400e', fontSize:13, lineHeight:1.5,
+            }}>
+              ⚠️ Request ini berstatus <b>{STATUS_LABEL[editingStatus]}</b> — estimator
+              {editingStatus === 'done' ? ' sudah menyelesaikan' : ' sedang mengerjakan'} perhitungan harga
+              berdasarkan data yang ada sekarang. Mengubah data di sini <b>tidak otomatis memperbarui harga</b> yang
+              sudah dihitung. Informasikan ke estimator setelah menyimpan perubahan ini.
+            </div>
+          )}
+
           <form onSubmit={handleSubmit}>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
               <div>
@@ -311,10 +361,16 @@ export default function SalesDashboard() {
               onChange={e => setForm({...form, notes: e.target.value})}
               placeholder="Informasi lain yang perlu diketahui estimator..." />
 
-            <div style={{ marginTop:20 }}>
+            <div style={{ marginTop:20, display:'flex', gap:10 }}>
               <button style={s.btnPrimary} type="submit" disabled={loading || uploading}>
-                {loading ? 'Mengirim...' : 'Kirim Request'}
+                {loading ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Kirim Request'}
               </button>
+              {editingId && (
+                <button type="button" onClick={cancelEdit}
+                  style={{ padding:'10px 20px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:8, fontSize:14, cursor:'pointer', color:C.dark }}>
+                  Batal
+                </button>
+              )}
             </div>
           </form>
         </div>
@@ -325,14 +381,14 @@ export default function SalesDashboard() {
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead>
             <tr>
-              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal'].map(h => (
+              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal','Aksi'].map(h => (
                 <th key={h} style={s.th}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredRequests.length === 0 && (
-              <tr><td colSpan={9} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
+              <tr><td colSpan={10} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
                 {requests.length === 0 ? 'Belum ada request. Klik "+ Request Harga Baru" untuk mulai.' : 'Tidak ada customer yang cocok dengan pencarian.'}
               </td></tr>
             )}
@@ -384,6 +440,12 @@ export default function SalesDashboard() {
                       </select>
                     ) : <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>}
                   </td>
+                  <td style={s.td}>
+                    <button onClick={() => startEdit(r)}
+                      style={{ padding:'5px 12px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', color:C.brown, fontWeight:500 }}>
+                      ✏️ Edit
+                    </button>
+                  </td>
                 </tr>
               )
             })}
@@ -393,4 +455,5 @@ export default function SalesDashboard() {
     </Layout>
   )
 }
+
 
