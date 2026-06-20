@@ -6,6 +6,11 @@ import Layout from '../components/Layout'
 const STATUS_LABEL = { pending:'Menunggu', in_progress:'Dikerjakan', done:'Selesai', cancelled:'Dibatalkan' }
 const STATUS_COLOR = { pending:'#f59e0b', in_progress:'#2563eb', done:'#16a34a', cancelled:'#9ca3af' }
 
+const DEAL_LABEL = { quoted:'Belum Diisi', deal:'Deal ✅', no_deal:'No Deal ❌', followup:'Followup 🔄' }
+const DEAL_COLOR = { quoted:'#9ca3af', deal:'#16a34a', no_deal:'#dc2626', followup:'#d97706' }
+
+const LAST_SEEN_KEY = 'risepack_estimator_deal_last_seen'
+
 const s = {
   card: { background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', marginBottom:24 },
   table: { width:'100%', borderCollapse:'collapse' },
@@ -22,6 +27,13 @@ export default function EstimatorQueue() {
   const [filter, setFilter]     = useState('all')
   const [pulse, setPulse]       = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [lastSeen] = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
+
+  useEffect(() => {
+    // Tandai "sudah dilihat" setelah komponen sempat dirender, supaya badge "baru" sempat terlihat dulu
+    const t = setTimeout(() => localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString()), 3000)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => {
     fetchRequests()
@@ -40,7 +52,7 @@ export default function EstimatorQueue() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name)')
+      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at)')
       .order('priority', { ascending: false })
       .order('submitted_at', { ascending: true })
     setRequests(data || [])
@@ -70,6 +82,12 @@ export default function EstimatorQueue() {
 
   return (
     <Layout title="Antrian Estimasi">
+      <style>{`
+        @keyframes pulseDot {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(1.3); }
+        }
+      `}</style>
       {/* Realtime indicator */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:20 }}>
         <span style={{
@@ -112,12 +130,13 @@ export default function EstimatorQueue() {
               <th style={s.th}>Sales</th>
               <th style={s.th}>Waktu</th>
               <th style={s.th}>Status</th>
+              <th style={s.th}>Status Deal</th>
               <th style={s.th}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={8} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
+              <tr><td colSpan={9} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
                 Tidak ada request
               </td></tr>
             )}
@@ -154,6 +173,24 @@ export default function EstimatorQueue() {
                 <td style={s.td}><div style={{ fontSize:12, color:'#9ca3af' }}>{elapsed(r.submitted_at)}</div></td>
                 <td style={s.td}><span style={s.badge(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</span></td>
                 <td style={s.td}>
+                  {(() => {
+                    const q = r.quotations?.[0]
+                    if (!q || !q.deal_status) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
+                    const isNew = q.deal_status !== 'quoted' && q.updated_at && new Date(q.updated_at) > new Date(lastSeen)
+                    return (
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        {isNew && (
+                          <span style={{
+                            width:7, height:7, borderRadius:'50%', background:'#dc2626', flexShrink:0,
+                            animation:'pulseDot 1.4s ease-in-out infinite',
+                          }} />
+                        )}
+                        <span style={s.badge(DEAL_COLOR[q.deal_status])}>{DEAL_LABEL[q.deal_status]}</span>
+                      </div>
+                    )
+                  })()}
+                </td>
+                <td style={s.td}>
                   <div style={{ display:'flex', gap:8, flexDirection:'column' }}>
                     {(r.status === 'pending' || r.status === 'in_progress') && (
                       <button style={s.btnPrimary} onClick={() => startRequest(r.id)}>
@@ -176,3 +213,4 @@ export default function EstimatorQueue() {
     </Layout>
   )
 }
+
