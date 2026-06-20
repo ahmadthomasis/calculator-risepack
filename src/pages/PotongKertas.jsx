@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { useNavigate } from 'react-router-dom'
 import Layout from '../components/Layout'
 
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
@@ -135,6 +136,9 @@ function ResultCard({ title, badgeColor, blocks, total, waste, cutW, cutH }) {
 }
 
 export default function PotongKertas() {
+  const navigate = useNavigate()
+  const lastRequestId = localStorage.getItem('risepack_last_calculator_request')
+
   const [origW, setOrigW] = useState('79')
   const [origH, setOrigH] = useState('109')
   const [cutW, setCutW]   = useState('21')
@@ -164,6 +168,19 @@ export default function PotongKertas() {
   return (
     <Layout title="Potong Kertas">
       <div style={{ maxWidth:1200, margin:'0 auto' }}>
+        {lastRequestId && (
+          <button
+            onClick={() => navigate(`/calculator/${lastRequestId}`)}
+            style={{
+              display:'flex', alignItems:'center', gap:6, marginBottom:16,
+              padding:'8px 14px', background:'#fff', border:`1px solid ${C.border}`,
+              borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer', color:C.brown,
+            }}
+          >
+            ← Kembali ke Kalkulasi Terakhir
+          </button>
+        )}
+
         <h2 style={{ fontSize:20, fontWeight:700, color:C.dark, marginBottom:4 }}>Hitung Potong Kertas</h2>
         <p style={{ fontSize:13, color:'#9ca3af', marginBottom:20 }}>
           Masukkan ukuran kertas plano dan ukuran hasil potong untuk melihat efisiensi tiap pola susun.
@@ -229,3 +246,4 @@ export default function PotongKertas() {
     </Layout>
   )
 }
+
