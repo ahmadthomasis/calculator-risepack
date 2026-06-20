@@ -5,6 +5,10 @@ import Layout from '../components/Layout'
 const fmt = n => (n || 0).toLocaleString('id-ID')
 const idr = n => 'Rp ' + fmt(Math.round(n || 0))
 
+const DEAL_LABEL = { quoted:'Belum Diisi', deal:'Deal ✅', no_deal:'No Deal ❌', followup:'Followup 🔄' }
+const DEAL_COLOR = { quoted:'#9ca3af', deal:'#16a34a', no_deal:'#dc2626', followup:'#d97706' }
+const LAST_SEEN_KEY = 'risepack_manager_deal_last_seen'
+
 function StatCard({ label, value, sub, color='#2563eb' }) {
   return (
     <div style={{ background:'#fff', borderRadius:12, padding:'20px 24px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
@@ -20,6 +24,12 @@ export default function ManagerDashboard() {
   const [quotations, setQuotations] = useState([])
   const [loading,    setLoading]    = useState(true)
   const [range,      setRange]      = useState('30')
+  const [lastSeen]   = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
+
+  useEffect(() => {
+    const t = setTimeout(() => localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString()), 3000)
+    return () => clearTimeout(t)
+  }, [])
 
   useEffect(() => { loadData() }, [range])
 
@@ -66,6 +76,12 @@ export default function ManagerDashboard() {
 
   return (
     <Layout title="Dashboard Manager">
+      <style>{`
+        @keyframes pulseDotMgr {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(1.3); }
+        }
+      `}</style>
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
         <div style={{ fontSize:16, fontWeight:600, color:'#1a1a1a' }}>Ringkasan</div>
         <select value={range} onChange={e => setRange(e.target.value)}
@@ -150,15 +166,23 @@ export default function ManagerDashboard() {
                     <td style={{ padding:'10px', fontSize:13, fontWeight:500 }}>{idr(q.selling_price)}</td>
                     <td style={{ padding:'10px', fontSize:13 }}>{idr(q.price_per_unit)}</td>
                     <td style={{ padding:'10px' }}>
-                      <select value={q.deal_status} onChange={async e => {
-                        await supabase.from('quotations').update({ deal_status: e.target.value }).eq('id', q.id)
-                        loadData()
-                      }} style={{ padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, background:'#fff' }}>
-                        <option value="quoted">Quoted</option>
-                        <option value="deal">Deal ✅</option>
-                        <option value="no_deal">No Deal ❌</option>
-                        <option value="revision">Revisi</option>
-                      </select>
+                      <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                        {q.deal_status !== 'quoted' && q.updated_at && new Date(q.updated_at) > new Date(lastSeen) && (
+                          <span style={{
+                            width:7, height:7, borderRadius:'50%', background:'#dc2626', flexShrink:0,
+                            animation:'pulseDotMgr 1.4s ease-in-out infinite',
+                          }} />
+                        )}
+                        <select value={q.deal_status} onChange={async e => {
+                          await supabase.from('quotations').update({ deal_status: e.target.value, updated_at: new Date().toISOString() }).eq('id', q.id)
+                          loadData()
+                        }} style={{ padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, background:'#fff', color: DEAL_COLOR[q.deal_status] }}>
+                          <option value="quoted">Belum Diisi</option>
+                          <option value="deal">Deal ✅</option>
+                          <option value="no_deal">No Deal ❌</option>
+                          <option value="followup">Followup 🔄</option>
+                        </select>
+                      </div>
                     </td>
                     <td style={{ padding:'10px', fontSize:12, color:'#9ca3af' }}>
                       {new Date(q.created_at).toLocaleDateString('id-ID')}
@@ -173,3 +197,4 @@ export default function ManagerDashboard() {
     </Layout>
   )
 }
+
