@@ -70,7 +70,7 @@ export default function Calculator() {
   const latestRef = useRef({})
   useEffect(() => {
     latestRef.current = {
-      requestId, profile, activeQty, savedQtys, qtyList,
+      requestId, profile, request, activeQty, savedQtys, qtyList,
       material, cetak, emboss, matProses, finishing, additional, margin,
     }
   })
@@ -97,17 +97,28 @@ export default function Calculator() {
     if (isEmpty) return
 
     try {
-      await supabase.from('quotations').insert({
+      const { error } = await supabase.from('quotations').insert({
         request_id: state.requestId, estimator_id: state.profile.id, quantity: qty,
+        customer_name: state.request?.customer_name || '', product_type: state.request?.product_type || '',
         is_draft: true, is_active: false, deal_status: 'quoted',
         material_cost: state.material, cetak_cost: state.cetak, emboss_laminasi: state.emboss,
         material_proses: state.matProses, finishing_wo: state.finishing, additional_cost: state.additional,
         margin_percent: num(state.margin), updated_at: new Date().toISOString(),
+        // Draft belum final, jadi kalkulasi total belum relevan — isi 0 sebagai
+        // default aman untuk berjaga-jaga kalau ada NOT NULL constraint di kolom ini.
+        subtotal_material: 0, subtotal_cetak: 0, subtotal_emboss: 0,
+        subtotal_matproses: 0, subtotal_finishing: 0, subtotal_additional: 0,
+        total_cost: 0, selling_price: 0, price_per_unit: 0,
       })
+      // PENTING: supabase-js TIDAK throw untuk error HTTP/database (mis. constraint
+      // violation) — error dikembalikan sebagai field `error`, bukan exception.
+      // Tanpa baris ini, kegagalan insert (mis. NOT NULL constraint) akan diam-diam
+      // gagal tanpa pernah terlihat di console.
+      if (error) console.error('Gagal auto-save draft (Supabase error):', error)
     } catch (e) {
       // Auto-save draft tidak boleh mengganggu alur utama kalau gagal (mis. offline).
       // Paling buruk: draft tidak tersimpan, kembali ke perilaku lama.
-      console.error('Gagal auto-save draft:', e)
+      console.error('Gagal auto-save draft (exception):', e)
     }
   }
 
