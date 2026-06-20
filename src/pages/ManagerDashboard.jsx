@@ -49,7 +49,7 @@ export default function ManagerDashboard() {
 
     const [{ data: reqs }, { data: quots }] = await Promise.all([
       supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)').gte('submitted_at', since.toISOString()),
-      supabase.from('quotations').select('*, requests(customer_name, product_type, quantity, submitted_at)').gte('created_at', since.toISOString()).eq('is_active', true),
+      supabase.from('quotations').select('*, requests(customer_name, product_type, quantity, submitted_at)').gte('created_at', since.toISOString()).eq('is_active', true).eq('is_draft', false),
     ])
     setRequests(reqs || [])
     setQuotations(quots || [])
