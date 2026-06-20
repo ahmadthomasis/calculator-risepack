@@ -184,7 +184,14 @@ export default function EstimatorQueue() {
                     })()}
                   </div>
                 </td>
-                <td style={s.td}>{r.quantity?.toLocaleString('id-ID')}</td>
+                <td style={s.td}>
+                  {(() => {
+                    const qtys = Array.isArray(r.quantities) && r.quantities.length > 0
+                      ? r.quantities
+                      : (r.quantity ? [r.quantity] : [])
+                    return qtys.map(q => q.toLocaleString('id-ID')).join(' / ')
+                  })()}
+                </td>
                 <td style={s.td}>{r.profiles?.full_name}</td>
                 <td style={s.td}><div style={{ fontSize:12, color:'#9ca3af' }}>{elapsed(r.submitted_at)}</div></td>
                 <td style={s.td}><span style={s.badge(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</span></td>
@@ -229,6 +236,7 @@ export default function EstimatorQueue() {
     </Layout>
   )
 }
+
 
 
 
