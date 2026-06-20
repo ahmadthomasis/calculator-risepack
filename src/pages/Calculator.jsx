@@ -113,14 +113,14 @@ export default function Calculator() {
 
   useEffect(() => { loadAll() }, [requestId])
 
-  // Auto-save draft untuk qty yang sedang aktif, tepat sebelum requestId berganti
-  // atau komponen unmount (mis. user pindah ke Potong Kertas / kembali ke Antrian).
-  useEffect(() => {
-    return () => {
-      const snap = latestRef.current
-      saveDraftFor(snap.activeQty, snap)
-    }
-  }, [requestId])
+  // Dipanggil dari Layout (lewat prop beforeNavigate) SEBELUM navigasi benar-benar
+  // terjadi, supaya draft pasti selesai tersimpan dulu. Ini menggantikan pendekatan
+  // lama (auto-save di cleanup function useEffect saat unmount), yang terbukti TIDAK
+  // reliable: cleanup function tidak bisa di-await, jadi browser sering pindah render
+  // sebelum request ke Supabase sempat benar-benar terkirim.
+  async function handleBeforeNavigate() {
+    await saveDraftFor(activeQty, latestRef.current)
+  }
 
   useEffect(() => {
     if (requestId) localStorage.setItem('risepack_last_calculator_request', requestId)
@@ -129,13 +129,14 @@ export default function Calculator() {
   // ── Pindah tab quantity ─────────────────────────────────────
   // savedQtysOverride: dipakai saat dipanggil tepat setelah handleSave, karena
   // latestRef.current.savedQtys mungkin belum sinkron (useEffect belum jalan ulang).
-  function switchQty(newQty, savedQtysOverride) {
+  async function switchQty(newQty, savedQtysOverride) {
     if (newQty === activeQty) return
 
     // Simpan state section saat ini ke cache sebelum pindah
     qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin }
-    // Auto-save draft qty yang sedang ditinggalkan (tidak perlu await, biar UI tetap responsif)
-    saveDraftFor(activeQty, { ...latestRef.current, savedQtys: savedQtysOverride || latestRef.current.savedQtys })
+    // Auto-save draft qty yang sedang ditinggalkan. DITUNGGU (await) supaya pasti
+    // selesai tersimpan sebelum UI pindah ke tab qty berikutnya.
+    await saveDraftFor(activeQty, { ...latestRef.current, savedQtys: savedQtysOverride || latestRef.current.savedQtys })
 
     if (qtyCache[newQty]) {
       // Qty ini sudah pernah dibuka/tersimpan, load dari cache
@@ -496,10 +497,10 @@ export default function Calculator() {
   if (!request) return <Layout title="Kalkulator"><div style={{ padding:60, color:'#dc2626' }}>Request tidak ditemukan.</div></Layout>
 
   return (
-    <Layout title={`Kalkulator — ${request.request_number}`}>
+    <Layout title={`Kalkulator — ${request.request_number}`} beforeNavigate={handleBeforeNavigate}>
       {/* Tombol kembali */}
       <button
-        onClick={() => navigate('/')}
+        onClick={async () => { await handleBeforeNavigate(); navigate('/') }}
         style={{
           display:'flex', alignItems:'center', gap:6, marginBottom:16,
           padding:'8px 14px', background:'#fff', border:`1px solid ${C.border}`,
