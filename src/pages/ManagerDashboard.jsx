@@ -198,11 +198,11 @@ export default function ManagerDashboard() {
                         q.deal_status === 'deal' ? (
                           <button
                             onClick={async () => {
-                              if (!confirm('Kirim quotation ini ke Purchasing untuk divalidasi?')) return
-                              await supabase.from('quotations').update({
+                              const { error } = await supabase.from('quotations').update({
                                 purchasing_status: 'pending',
                                 sent_to_purchasing_at: new Date().toISOString(),
                               }).eq('id', q.id)
+                              if (error) { console.error('Gagal kirim ke purchasing:', error); alert('Gagal mengirim ke Purchasing: ' + error.message); return }
                               loadData()
                             }}
                             style={{ padding:'5px 10px', background:'#fff', border:'1px solid #2563eb', color:'#2563eb', borderRadius:6, fontSize:12, fontWeight:500, cursor:'pointer' }}
