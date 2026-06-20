@@ -1,4 +1,3 @@
-import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import Layout from '../components/Layout'
@@ -159,18 +158,29 @@ export default function EstimatorQueue() {
                     {r.print_spec && <div>🖨️ {r.print_spec}</div>}
                     {r.finishing_spec && <div>✂️ {r.finishing_spec}</div>}
                     {r.notes && <div style={{ color:'#9ca3af', fontStyle:'italic' }}>💬 {r.notes}</div>}
-                    {r.reference_image && (
-                      <div style={{ marginTop:8 }}>
-                        <img
-                          src={r.reference_image}
-                          alt="referensi"
-                          style={{ maxWidth:160, maxHeight:120, borderRadius:6, border:'1px solid #e5e7eb', cursor:'pointer', objectFit:'cover' }}
-                          onClick={() => window.open(r.reference_image, '_blank')}
-                          title="Klik untuk lihat ukuran penuh"
-                        />
-                        <div style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>🖼️ klik untuk perbesar</div>
-                      </div>
-                    )}
+                    {(() => {
+                      const imgs = Array.isArray(r.reference_images) && r.reference_images.length > 0
+                        ? r.reference_images
+                        : (r.reference_image ? [r.reference_image] : [])
+                      if (imgs.length === 0) return null
+                      return (
+                        <div style={{ marginTop:8 }}>
+                          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+                            {imgs.map((url, i) => (
+                              <img
+                                key={i}
+                                src={url}
+                                alt={`referensi ${i+1}`}
+                                style={{ width:78, height:78, borderRadius:6, border:'1px solid #e5e7eb', cursor:'pointer', objectFit:'cover' }}
+                                onClick={() => window.open(url, '_blank')}
+                                title="Klik untuk lihat ukuran penuh"
+                              />
+                            ))}
+                          </div>
+                          <div style={{ fontSize:10, color:'#9ca3af', marginTop:2 }}>🖼️ klik gambar untuk perbesar</div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 </td>
                 <td style={s.td}>{r.quantity?.toLocaleString('id-ID')}</td>
@@ -218,5 +228,6 @@ export default function EstimatorQueue() {
     </Layout>
   )
 }
+
 
 
