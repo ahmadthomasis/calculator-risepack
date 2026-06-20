@@ -99,7 +99,7 @@ export default function SalesDashboard() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, quotations(id, deal_status, selling_price, price_per_unit, updated_at)')
+      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at)')
       .order('submitted_at', { ascending: false })
     setRequests(data || [])
   }
@@ -494,7 +494,15 @@ export default function SalesDashboard() {
               </td></tr>
             )}
             {filteredRequests.map(r => {
-              const q = r.quotations?.[0]
+              const qtys = Array.isArray(r.quantities) && r.quantities.length > 0
+                ? r.quantities
+                : (r.quantity ? [r.quantity] : [])
+              const quotationsList = Array.isArray(r.quotations) ? r.quotations : []
+              // cocokkan tiap qty dengan quotation yang quantity-nya sama persis
+              const rows = qtys.map(qty => ({
+                qty,
+                q: quotationsList.find(qt => qt.quantity === qty) || null,
+              }))
               return (
                 <tr key={r.id}>
                   <td style={s.td}><span style={{ fontFamily:'monospace', fontSize:12, color:C.brown }}>{r.request_number}</span></td>
@@ -515,12 +523,7 @@ export default function SalesDashboard() {
                     })()}
                   </td>
                   <td style={s.td}>
-                    {(() => {
-                      const qtys = Array.isArray(r.quantities) && r.quantities.length > 0
-                        ? r.quantities
-                        : (r.quantity ? [r.quantity] : [])
-                      return qtys.map(q => q.toLocaleString('id-ID')).join(' / ')
-                    })()}
+                    {qtys.map(q => q.toLocaleString('id-ID')).join(' / ')}
                   </td>
                   <td style={s.td}><span style={s.badge(r.status)}>{STATUS_LABEL[r.status]}</span></td>
                   <td style={s.td}>
@@ -530,30 +533,56 @@ export default function SalesDashboard() {
                   </td>
                   <td style={s.td}>{new Date(r.submitted_at).toLocaleDateString('id-ID')}</td>
                   <td style={s.td}>
-                    {q?.selling_price ? (
-                      <div>
-                        <div style={{ fontWeight:600, color:'#2d6a2d' }}>Rp {q.selling_price.toLocaleString('id-ID')}</div>
-                        {q.price_per_unit && (
-                          <div style={{ fontSize:11, color:'#9ca3af' }}>Rp {Math.round(q.price_per_unit).toLocaleString('id-ID')} /pcs</div>
-                        )}
+                    {rows.some(row => row.q?.selling_price) ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {rows.map((row, i) => row.q?.selling_price ? (
+                          <div key={i}>
+                            {rows.length > 1 && (
+                              <span style={{ fontSize:10, color:'#9ca3af', marginRight:4 }}>
+                                {row.qty.toLocaleString('id-ID')}:
+                              </span>
+                            )}
+                            <span style={{ fontWeight:600, color:'#2d6a2d' }}>Rp {row.q.selling_price.toLocaleString('id-ID')}</span>
+                            {row.q.price_per_unit && (
+                              <span style={{ fontSize:11, color:'#9ca3af', marginLeft:4 }}>
+                                (Rp {Math.round(row.q.price_per_unit).toLocaleString('id-ID')}/pcs)
+                              </span>
+                            )}
+                          </div>
+                        ) : rows.length > 1 ? (
+                          <div key={i} style={{ fontSize:11, color:'#d1d5db' }}>
+                            {row.qty.toLocaleString('id-ID')}: belum dihitung
+                          </div>
+                        ) : null)}
                       </div>
                     ) : <span style={{ color:'#9ca3af' }}>—</span>}
                   </td>
                   <td style={s.td}>
-                    {r.status === 'done' && q ? (
-                      <select
-                        value={q.deal_status || 'quoted'}
-                        onChange={e => updateDealStatus(q.id, e.target.value)}
-                        style={{
-                          padding:'5px 8px', borderRadius:6, fontSize:12, border:`1px solid ${C.border}`,
-                          background:'#fff', color: DEAL_COLOR[q.deal_status] || '#9ca3af', fontWeight:500,
-                        }}
-                      >
-                        <option value="quoted">Belum Diisi</option>
-                        <option value="deal">Deal ✅</option>
-                        <option value="no_deal">No Deal ❌</option>
-                        <option value="followup">Followup 🔄</option>
-                      </select>
+                    {r.status === 'done' && rows.some(row => row.q) ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {rows.map((row, i) => row.q ? (
+                          <div key={i} style={{ display:'flex', alignItems:'center', gap:4 }}>
+                            {rows.length > 1 && (
+                              <span style={{ fontSize:10, color:'#9ca3af' }}>
+                                {row.qty.toLocaleString('id-ID')}:
+                              </span>
+                            )}
+                            <select
+                              value={row.q.deal_status || 'quoted'}
+                              onChange={e => updateDealStatus(row.q.id, e.target.value)}
+                              style={{
+                                padding:'5px 8px', borderRadius:6, fontSize:12, border:`1px solid ${C.border}`,
+                                background:'#fff', color: DEAL_COLOR[row.q.deal_status] || '#9ca3af', fontWeight:500,
+                              }}
+                            >
+                              <option value="quoted">Belum Diisi</option>
+                              <option value="deal">Deal ✅</option>
+                              <option value="no_deal">No Deal ❌</option>
+                              <option value="followup">Followup 🔄</option>
+                            </select>
+                          </div>
+                        ) : null)}
+                      </div>
                     ) : <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>}
                   </td>
                   <td style={s.td}>
