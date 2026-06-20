@@ -57,7 +57,7 @@ export default function EstimatorQueue() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at)')
+      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft)')
       .order('priority', { ascending: false })
       .order('submitted_at', { ascending: true })
     setRequests(data || [])
@@ -197,7 +197,7 @@ export default function EstimatorQueue() {
                 <td style={s.td}><span style={s.badge(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</span></td>
                 <td style={s.td}>
                   {(() => {
-                    const q = r.quotations?.[0]
+                    const q = (r.quotations || []).filter(qt => !qt.is_draft)[0]
                     if (!q || !q.deal_status) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     const isNew = q.deal_status !== 'quoted' && q.updated_at && new Date(q.updated_at) > new Date(lastSeen)
                     return (
