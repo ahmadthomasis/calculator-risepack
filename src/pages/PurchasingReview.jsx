@@ -15,11 +15,18 @@ const SECTIONS = [
   { key:'additional_cost',   label:'6. Additional Cost', priceField:'harga',          nameFn:r => r.proses || '—' },
 ]
 
+// Format angka konsisten: bulatkan, pakai pemisah ribuan gaya Indonesia, tanpa desimal
+// (harga di app ini selalu dalam Rupiah utuh, desimal kecil di data lama hanya artefak
+// kalkulasi internal yang tidak relevan untuk ditampilkan ke user).
+const fmt = n => Math.round(Number(n) || 0).toLocaleString('id-ID')
+
 const s = {
   card: { background:'#fff', border:`0.5px solid ${C.border}`, borderRadius:10, overflow:'hidden', marginBottom:18 },
   th: { textAlign:'left', padding:'9px 16px', fontSize:11, color:'#9ca3af', borderBottom:`0.5px solid ${C.border}` },
+  thNum: { textAlign:'right', padding:'9px 16px', fontSize:11, color:'#9ca3af', borderBottom:`0.5px solid ${C.border}` },
   td: { padding:'12px 16px', fontSize:13, color:C.dark, borderBottom:'0.5px solid #f3ede2' },
-  input: { width:100, padding:'6px 8px', border:`1px solid ${C.border}`, borderRadius:6, fontSize:13 },
+  tdNum: { padding:'12px 16px', fontSize:13, color:C.dark, borderBottom:'0.5px solid #f3ede2', textAlign:'right' },
+  input: { width:110, padding:'6px 8px', border:`1px solid ${C.border}`, borderRadius:6, fontSize:13, textAlign:'right' },
 }
 
 export default function PurchasingReview() {
@@ -66,7 +73,9 @@ export default function PurchasingReview() {
     }))
   }
 
-  const hasAtLeastOnePrice = Object.values(comparisons).some(c => c.purchasing_price != null && c.purchasing_price !== '')
+  const filledComparisons = Object.values(comparisons).filter(c => c.purchasing_price != null && c.purchasing_price !== '')
+  const hasAtLeastOnePrice = filledComparisons.length > 0
+  const totalDiff = filledComparisons.reduce((sum, c) => sum + (Number(c.purchasing_price) - Number(c.estimator_price || 0)), 0)
 
   async function saveComparisons() {
     const rows = Object.entries(comparisons)
@@ -122,13 +131,24 @@ export default function PurchasingReview() {
       </button>
 
       <div style={{ ...s.card, borderLeft:`4px solid ${C.orange}`, padding:'14px 18px', marginBottom:18 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(5, 1fr)', gap:10, fontSize:13 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:10, fontSize:13 }}>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Customer</div><div style={{ fontWeight:500 }}>{quotation.customer_name}</div></div>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Produk</div><div style={{ fontWeight:500 }}>{quotation.product_type}</div></div>
-          <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Qty</div><div style={{ fontWeight:500 }}>{(quotation.quantity || 0).toLocaleString('id-ID')}</div></div>
-          <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Harga Estimator</div><div style={{ fontWeight:500 }}>Rp {(quotation.selling_price || 0).toLocaleString('id-ID')}</div></div>
+          <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Qty</div><div style={{ fontWeight:500 }}>{fmt(quotation.quantity)}</div></div>
+          <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Harga Estimator</div><div style={{ fontWeight:500 }}>Rp {fmt(quotation.selling_price)}</div></div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Selisih harga satuan terisi</div>
+            <div style={{ fontWeight:500, color: !hasAtLeastOnePrice ? '#9ca3af' : totalDiff > 0 ? '#A32D2D' : totalDiff < 0 ? '#3b6d11' : C.dark }}>
+              {hasAtLeastOnePrice ? `${totalDiff > 0 ? '+' : ''}Rp ${fmt(totalDiff)}` : '—'}
+            </div>
+          </div>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Dikirim</div><div style={{ fontWeight:500 }}>{quotation.sent_to_purchasing_at ? new Date(quotation.sent_to_purchasing_at).toLocaleDateString('id-ID') : '—'}</div></div>
         </div>
+        {hasAtLeastOnePrice && (
+          <div style={{ fontSize:11, color:'#9ca3af', marginTop:8 }}>
+            * Jumlah selisih harga satuan dari item yang sudah dibandingkan saja — bukan total harga jual, hanya indikator kasar arah selisih.
+          </div>
+        )}
       </div>
 
       {SECTIONS.map(sec => {
@@ -138,13 +158,19 @@ export default function PurchasingReview() {
           <div key={sec.key}>
             <div style={{ fontSize:13, fontWeight:500, color:C.dark, margin:'0 0 8px' }}>{sec.label}</div>
             <div style={s.card}>
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', tableLayout:'fixed' }}>
+                <colgroup>
+                  <col style={{ width:'34%' }} />
+                  <col style={{ width:'22%' }} />
+                  <col style={{ width:'22%' }} />
+                  <col style={{ width:'22%' }} />
+                </colgroup>
                 <thead>
                   <tr>
                     <th style={s.th}>Item</th>
-                    <th style={s.th}>Harga Estimator</th>
-                    <th style={s.th}>Harga Purchasing</th>
-                    <th style={s.th}>Selisih</th>
+                    <th style={s.thNum}>Harga Estimator</th>
+                    <th style={s.thNum}>Harga Purchasing</th>
+                    <th style={s.thNum}>Selisih</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -160,8 +186,8 @@ export default function PurchasingReview() {
                     return (
                       <tr key={key}>
                         <td style={s.td}>{itemName}</td>
-                        <td style={s.td}>Rp {estimatorPrice.toLocaleString('id-ID')}</td>
-                        <td style={s.td}>
+                        <td style={s.tdNum}>Rp {fmt(estimatorPrice)}</td>
+                        <td style={s.tdNum}>
                           <input
                             type="number"
                             style={s.input}
@@ -170,7 +196,7 @@ export default function PurchasingReview() {
                             onChange={e => updateComparisonPrice(sec.key, i, e.target.value, estimatorPrice, itemName)}
                           />
                         </td>
-                        <td style={{ ...s.td, fontWeight:500, color: diffPct == null ? '#c4c4c4' : diffPct > 0 ? '#A32D2D' : diffPct < 0 ? '#3b6d11' : C.dark }}>
+                        <td style={{ ...s.tdNum, fontWeight:500, color: diffPct == null ? '#c4c4c4' : diffPct > 0 ? '#A32D2D' : diffPct < 0 ? '#3b6d11' : C.dark }}>
                           {diffPct == null ? '—' : `${diffPct > 0 ? '+' : ''}${diffPct}%`}
                         </td>
                       </tr>
