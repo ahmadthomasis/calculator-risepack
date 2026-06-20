@@ -359,14 +359,24 @@ export default function Calculator() {
               💬 {request.notes}
             </div>
           )}
-          {request.reference_image && (
-            <div style={{ textAlign:'center' }}>
-              <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>🖼️ Gambar Referensi</div>
-              <img src={request.reference_image} alt="ref"
-                style={{ maxHeight:120, maxWidth:200, borderRadius:8, border:`1px solid ${C.border}`, cursor:'pointer', objectFit:'cover' }}
-                onClick={() => window.open(request.reference_image, '_blank')} />
-            </div>
-          )}
+          {(() => {
+            const imgs = Array.isArray(request.reference_images) && request.reference_images.length > 0
+              ? request.reference_images
+              : (request.reference_image ? [request.reference_image] : [])
+            if (imgs.length === 0) return null
+            return (
+              <div>
+                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4, textAlign:'center' }}>🖼️ Gambar Referensi</div>
+                <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                  {imgs.map((url, i) => (
+                    <img key={i} src={url} alt={`ref ${i+1}`}
+                      style={{ height:120, width:120, borderRadius:8, border:`1px solid ${C.border}`, cursor:'pointer', objectFit:'cover' }}
+                      onClick={() => window.open(url, '_blank')} />
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
         </div>
       </div>
 
