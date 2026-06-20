@@ -59,9 +59,11 @@ const s = {
 
 const MAX_IMAGES = 3
 
+const MAX_QTYS = 5
+
 const emptyForm = {
   customer_name:'', product_category:'Hardbox', product_type:'Hardbox Two Pieces',
-  quantity:'', priority:'normal', product_size:'',
+  quantities:[''], priority:'normal', product_size:'',
   luas_permukaan:'', material_spec:'', print_spec:'',
   finishing:[], notes:'', image_urls:[],
 }
@@ -124,7 +126,9 @@ export default function SalesDashboard() {
       customer_name: r.customer_name || '',
       product_category: Object.keys(PRODUCT_TYPES).find(k => PRODUCT_TYPES[k].includes(r.product_type)) || 'Hardbox',
       product_type: r.product_type || '',
-      quantity: String(r.quantity || ''),
+      quantities: Array.isArray(r.quantities) && r.quantities.length > 0
+        ? r.quantities.map(String)
+        : (r.quantity ? [String(r.quantity)] : ['']),
       priority: r.priority || 'normal',
       product_size: r.product_size || '',
       luas_permukaan: r.plano_size || '',
@@ -191,10 +195,17 @@ export default function SalesDashboard() {
   async function handleSubmit(e) {
     e.preventDefault()
     setLoading(true)
+    const qtyNumbers = form.quantities.map(q => parseInt(q)).filter(q => !isNaN(q) && q > 0)
+    if (qtyNumbers.length === 0) {
+      alert('Isi minimal 1 quantity yang valid.')
+      setLoading(false)
+      return
+    }
     const payload = {
       customer_name:  form.customer_name,
       product_type:   form.product_type,
-      quantity:       parseInt(form.quantity),
+      quantities:     qtyNumbers,
+      quantity:       qtyNumbers[0], // kompatibilitas mundur, kolom lama tetap diisi qty pertama
       priority:       form.priority,
       product_size:   form.product_size,
       material_spec:  form.material_spec,
@@ -213,7 +224,6 @@ export default function SalesDashboard() {
     if (!error) {
       setSuccess(true)
       setForm(emptyForm)
-      setPreviewUrl('')
       setShowForm(false)
       setEditingId(null)
       setEditingStatus(null)
@@ -323,10 +333,39 @@ export default function SalesDashboard() {
                 </select>
               </div>
 
-              <div>
-                <label style={s.label}>Quantity *</label>
-                <input style={s.input} type="number" min="1" value={form.quantity}
-                  onChange={e => setForm({...form, quantity: e.target.value})} required placeholder="contoh: 5000" />
+              <div style={{ gridColumn:'1 / -1' }}>
+                <label style={s.label}>Quantity * (bisa lebih dari satu, contoh: 5.000 / 10.000 / 20.000 pcs)</label>
+                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  {form.quantities.map((q, i) => (
+                    <div key={i} style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      <input
+                        style={{ ...s.input, maxWidth:200 }}
+                        type="number" min="1" value={q}
+                        onChange={e => {
+                          const next = [...form.quantities]
+                          next[i] = e.target.value
+                          setForm({...form, quantities: next})
+                        }}
+                        required={i === 0}
+                        placeholder="contoh: 5000"
+                      />
+                      {form.quantities.length > 1 && (
+                        <button type="button"
+                          onClick={() => setForm({...form, quantities: form.quantities.filter((_, idx) => idx !== i)})}
+                          style={{ padding:'6px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626' }}>
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                  {form.quantities.length < MAX_QTYS && (
+                    <button type="button"
+                      onClick={() => setForm({...form, quantities: [...form.quantities, '']})}
+                      style={{ alignSelf:'flex-start', padding:'6px 14px', background:'#fff7ed', color:C.orange, border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', fontWeight:500 }}>
+                      + Tambah Quantity Lain
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <label style={s.label}>Ukuran Produk (P×L×T)</label>
@@ -475,7 +514,14 @@ export default function SalesDashboard() {
                       )
                     })()}
                   </td>
-                  <td style={s.td}>{r.quantity?.toLocaleString('id-ID')}</td>
+                  <td style={s.td}>
+                    {(() => {
+                      const qtys = Array.isArray(r.quantities) && r.quantities.length > 0
+                        ? r.quantities
+                        : (r.quantity ? [r.quantity] : [])
+                      return qtys.map(q => q.toLocaleString('id-ID')).join(' / ')
+                    })()}
+                  </td>
                   <td style={s.td}><span style={s.badge(r.status)}>{STATUS_LABEL[r.status]}</span></td>
                   <td style={s.td}>
                     {r.priority === 'urgent'
@@ -525,6 +571,7 @@ export default function SalesDashboard() {
     </Layout>
   )
 }
+
 
 
 
