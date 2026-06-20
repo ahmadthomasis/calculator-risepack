@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
@@ -59,11 +59,57 @@ export default function Calculator() {
   const [finishing,  setFinishing]  = useState([])
   const [additional, setAdditional] = useState([])
 
+  // ── Multi-quantity ──────────────────────────────────────────
+  const [qtyList, setQtyList]         = useState([])   // daftar semua qty diminta sales, misal [200000, 400000]
+  const [activeQty, setActiveQty]     = useState(null) // qty yang sedang dikerjakan estimator
+  const [savedQtys, setSavedQtys]     = useState([])   // qty yang sudah punya quotation tersimpan
+  const qtyCache = useRef({}).current                   // cache state per-qty di memori (tidak re-render saat diisi)
+
+  const normGsm = (rows) => (rows || []).map(r => ({
+    ...r,
+    gsm: String(r.gsm || '').toLowerCase().replace('gsm','').trim()
+  }))
+
   useEffect(() => { loadAll() }, [requestId])
 
   useEffect(() => {
     if (requestId) localStorage.setItem('risepack_last_calculator_request', requestId)
   }, [requestId])
+
+  // ── Pindah tab quantity ─────────────────────────────────────
+  function switchQty(newQty) {
+    if (newQty === activeQty) return
+
+    // Simpan state section saat ini ke cache sebelum pindah
+    qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin }
+
+    if (qtyCache[newQty]) {
+      // Qty ini sudah pernah dibuka/tersimpan, load dari cache
+      const c = qtyCache[newQty]
+      setMaterial(c.material); setCetak(c.cetak); setEmboss(c.emboss)
+      setMatProses(c.matProses); setFinishing(c.finishing); setAdditional(c.additional)
+      setMargin(c.margin)
+    } else {
+      // Qty ini belum pernah dibuka, prefill dari qty pertama (kalau ada),
+      // qty & insheet dikosongkan ulang karena nilainya pasti beda untuk qty lain
+      const firstQty = qtyList[0]
+      const base = qtyCache[firstQty]
+      if (base) {
+        const cloneRows = (rows) => rows.map(r => ({ ...r, id: Date.now() + Math.random(), quantity: '', insheet: '' }))
+        setMaterial(cloneRows(base.material))
+        setCetak(cloneRows(base.cetak))
+        setEmboss(cloneRows(base.emboss))
+        setMatProses(base.matProses.map(r => ({ ...r, id: Date.now() + Math.random(), quantity: 1 })))
+        setFinishing(base.finishing.map(r => ({ ...r, id: Date.now() + Math.random() })))
+        setAdditional(cloneRows(base.additional))
+        setMargin(base.margin)
+      } else {
+        setMaterial([]); setCetak([]); setEmboss([]); setMatProses([]); setFinishing([]); setAdditional([])
+        setMargin(15)
+      }
+    }
+    setActiveQty(newQty)
+  }
 
   async function loadAll() {
     setLoading(true)
@@ -84,14 +130,14 @@ export default function Calculator() {
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
       supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional').order('name'),
     ])
-    // Load existing quotation if any
-    const { data: quot } = await supabase.from('quotations').select('*')
-      .eq('request_id', requestId).eq('is_active', true).single()
+    // Load semua quotation aktif untuk request ini (bisa lebih dari 1, satu per qty)
+    const { data: quots } = await supabase.from('quotations').select('*')
+      .eq('request_id', requestId).eq('is_active', true)
 
-    const normGsm = (rows) => (rows || []).map(r => ({
-      ...r,
-      gsm: String(r.gsm || '').toLowerCase().replace('gsm','').trim()
-    }))
+    // Tentukan daftar qty: dari quantities (array baru) dengan fallback ke quantity (lama, tunggal)
+    const qtys = Array.isArray(req?.quantities) && req.quantities.length > 0
+      ? req.quantities
+      : (req?.quantity ? [req.quantity] : [])
 
     // Set semua state sekaligus agar tidak ada race condition
     setRequest(req)
@@ -101,15 +147,35 @@ export default function Calculator() {
     setDbMatProses(mp || [])
     setDbFinishing(fin || [])
     setDbAdditional(addl || [])
-    if (quot) {
-      setMaterial(normGsm(quot.material_cost))
-      setCetak(quot.cetak_cost || [])
-      setEmboss(quot.emboss_laminasi || [])
-      setMatProses(quot.material_proses || [])
-      setFinishing(quot.finishing_wo || [])
-      setAdditional(quot.additional_cost || [])
-      setMargin(quot.margin_percent || 15)
+    setQtyList(qtys)
+
+    const savedQtyNumbers = (quots || []).map(q => q.quantity)
+    setSavedQtys(savedQtyNumbers)
+
+    // Isi cache dari quotation yang sudah tersimpan
+    ;(quots || []).forEach(q => {
+      qtyCache[q.quantity] = {
+        material: normGsm(q.material_cost), cetak: q.cetak_cost || [], emboss: q.emboss_laminasi || [],
+        matProses: q.material_proses || [], finishing: q.finishing_wo || [], additional: q.additional_cost || [],
+        margin: q.margin_percent || 15,
+      }
+    })
+
+    // Mulai dari qty pertama yang belum tersimpan, atau qty pertama kalau semua sudah tersimpan
+    const firstUnsaved = qtys.find(q => !savedQtyNumbers.includes(q))
+    const startQty = firstUnsaved ?? qtys[0] ?? null
+    setActiveQty(startQty)
+
+    if (startQty != null && qtyCache[startQty]) {
+      const c = qtyCache[startQty]
+      setMaterial(c.material); setCetak(c.cetak); setEmboss(c.emboss)
+      setMatProses(c.matProses); setFinishing(c.finishing); setAdditional(c.additional)
+      setMargin(c.margin)
+    } else {
+      setMaterial([]); setCetak([]); setEmboss([]); setMatProses([]); setFinishing([]); setAdditional([])
+      setMargin(15)
     }
+
     setLoading(false)
   }
 
@@ -300,14 +366,18 @@ export default function Calculator() {
   }
   const total   = Object.values(sub).reduce((a, b) => a + b, 0)
   const selling = total * (1 + num(margin) / 100)
-  const perUnit = request?.quantity ? selling / request.quantity : 0
+  const perUnit = activeQty ? selling / activeQty : 0
 
   async function handleSave() {
     setSaving(true)
-    await supabase.from('quotations').update({ is_active:false }).eq('request_id', requestId)
+    // PENTING: hanya nonaktifkan quotation untuk qty yang SAMA dengan yang sedang disimpan,
+    // supaya quotation qty lain yang sudah tersimpan sebelumnya tidak ikut hilang.
+    await supabase.from('quotations').update({ is_active:false })
+      .eq('request_id', requestId).eq('quantity', activeQty)
+
     const { error } = await supabase.from('quotations').insert({
       request_id: requestId, estimator_id: profile.id,
-      customer_name: request.customer_name, product_type: request.product_type, quantity: request.quantity,
+      customer_name: request.customer_name, product_type: request.product_type, quantity: activeQty,
       material_cost: matCalc, cetak_cost: cetakCalc, emboss_laminasi: embCalc,
       material_proses: mpCalc, finishing_wo: finCalc, additional_cost: additional,
       subtotal_material: sub.material, subtotal_cetak: sub.cetak, subtotal_emboss: sub.emboss,
@@ -316,9 +386,20 @@ export default function Calculator() {
       selling_price: Math.round(selling),
       price_per_unit: perUnit, deal_status: 'quoted',
     })
+
     if (!error) {
-      await supabase.from('requests').update({ status:'done', completed_at: new Date().toISOString() }).eq('id', requestId)
-      navigate('/')
+      qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin }
+      const newSavedQtys = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]
+      setSavedQtys(newSavedQtys)
+
+      const allDone = qtyList.every(q => newSavedQtys.includes(q))
+      if (allDone) {
+        await supabase.from('requests').update({ status:'done', completed_at: new Date().toISOString() }).eq('id', requestId)
+        navigate('/')
+      } else {
+        const nextQty = qtyList.find(q => !newSavedQtys.includes(q))
+        if (nextQty != null) switchQty(nextQty)
+      }
     }
     setSaving(false)
   }
@@ -343,7 +424,7 @@ export default function Calculator() {
       {/* Info header */}
       <div style={{ ...s.card, borderLeft:`4px solid ${C.orange}`, padding:'16px 20px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px,1fr))', gap:12 }}>
-          {[['Customer',request.customer_name],['Produk',request.product_type],['Qty',fmt(request.quantity)],
+          {[['Customer',request.customer_name],['Produk',request.product_type],['Qty Diminta',qtyList.map(fmt).join(' / ')],
             ['Ukuran',request.product_size||'—'],['Material',request.material_spec||'—'],
             ['Print',request.print_spec||'—'],['Finishing',request.finishing_spec||'—']
           ].map(([k,v]) => (
@@ -379,6 +460,31 @@ export default function Calculator() {
           })()}
         </div>
       </div>
+
+      {/* Tab selector quantity — cuma muncul kalau request punya lebih dari 1 qty */}
+      {qtyList.length > 1 && (
+        <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
+          {qtyList.map(q => {
+            const isActive = q === activeQty
+            const isSaved  = savedQtys.includes(q)
+            return (
+              <button
+                key={q}
+                onClick={() => switchQty(q)}
+                style={{
+                  padding:'10px 18px', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer',
+                  border: isActive ? `2px solid ${C.orange}` : `1px solid ${C.border}`,
+                  background: isActive ? '#fff7ed' : '#fff',
+                  color: isActive ? C.orange : C.dark,
+                }}
+              >
+                {isSaved && <span style={{ color:'#16a34a', marginRight:6 }}>✓</span>}
+                {fmt(q)} pcs
+              </button>
+            )
+          })}
+        </div>
+      )}
 
       {/* 1. MATERIAL COST */}
       <div style={s.card}>
@@ -701,7 +807,7 @@ export default function Calculator() {
               <div style={{ fontSize:12, color:'#16a34a', marginBottom:4 }}>Harga Jual Total</div>
               <div style={{ fontSize:26, fontWeight:700, color:'#15803d' }}>{idr(selling)}</div>
               <div style={{ fontSize:13, color:'#16a34a', marginTop:6 }}>
-                Per unit: {idr(perUnit)} &nbsp;|&nbsp; Qty: {fmt(request.quantity)}
+                Per unit: {idr(perUnit)} &nbsp;|&nbsp; Qty: {fmt(activeQty)}
               </div>
             </div>
           </div>
@@ -711,11 +817,18 @@ export default function Calculator() {
             Kembali
           </button>
           <button onClick={handleSave} disabled={saving} style={s.saveBtn}>
-            {saving ? 'Menyimpan...' : '💾 Simpan & Selesai'}
+            {saving ? 'Menyimpan...' : (() => {
+              const remaining = qtyList.filter(q => q !== activeQty && !savedQtys.includes(q)).length
+              if (qtyList.length <= 1) return '💾 Simpan & Selesai'
+              return remaining > 0
+                ? `💾 Simpan Qty ${fmt(activeQty)} & Lanjut`
+                : `💾 Simpan Qty ${fmt(activeQty)} & Selesai Semua`
+            })()}
           </button>
         </div>
       </div>
     </Layout>
   )
 }
+
 
