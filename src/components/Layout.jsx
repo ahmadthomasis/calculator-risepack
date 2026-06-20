@@ -1,7 +1,7 @@
 import { useAuth } from '../lib/AuthContext'
 import { useNavigate, useLocation } from 'react-router-dom'
 
-const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager' }
+const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing' }
 const C = {
   dark:   '#2C1810',
   orange: '#E8760A',
@@ -11,9 +11,10 @@ const C = {
 }
 
 const managerTabs = [
-  { path: '/',          label: 'Manager' },
-  { path: '/sales',     label: 'Sales' },
-  { path: '/estimator', label: 'Estimator' },
+  { path: '/',            label: 'Manager' },
+  { path: '/sales',       label: 'Sales' },
+  { path: '/estimator',   label: 'Estimator' },
+  { path: '/purchasing',  label: 'Purchasing' },
 ]
 
 const HomeIcon = ({ active }) => (
