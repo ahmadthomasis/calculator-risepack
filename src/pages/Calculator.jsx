@@ -61,6 +61,10 @@ export default function Calculator() {
 
   useEffect(() => { loadAll() }, [requestId])
 
+  useEffect(() => {
+    if (requestId) localStorage.setItem('risepack_last_calculator_request', requestId)
+  }, [requestId])
+
   async function loadAll() {
     setLoading(true)
     const [
@@ -324,6 +328,18 @@ export default function Calculator() {
 
   return (
     <Layout title={`Kalkulator — ${request.request_number}`}>
+      {/* Tombol kembali */}
+      <button
+        onClick={() => navigate('/')}
+        style={{
+          display:'flex', alignItems:'center', gap:6, marginBottom:16,
+          padding:'8px 14px', background:'#fff', border:`1px solid ${C.border}`,
+          borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer', color:C.brown,
+        }}
+      >
+        ← Kembali ke Antrian
+      </button>
+
       {/* Info header */}
       <div style={{ ...s.card, borderLeft:`4px solid ${C.orange}`, padding:'16px 20px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px,1fr))', gap:12 }}>
@@ -692,3 +708,4 @@ export default function Calculator() {
     </Layout>
   )
 }
+
