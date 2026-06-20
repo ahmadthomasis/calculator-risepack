@@ -525,7 +525,8 @@ export default function Calculator() {
       <div style={{ ...s.card, borderLeft:`4px solid ${C.orange}`, padding:'16px 20px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px,1fr))', gap:12 }}>
           {[['Customer',request.customer_name],['Produk',request.product_type],['Qty Diminta',qtyList.map(fmt).join(' / ')],
-            ['Ukuran',request.product_size||'—'],['Material',request.material_spec||'—'],
+            ['Ukuran',request.product_size||'—'],['Luas Permukaan (m²)',request.plano_size||'—'],
+            ['Material',request.material_spec||'—'],
             ['Print',request.print_spec||'—'],['Finishing',request.finishing_spec||'—']
           ].map(([k,v]) => (
             <div key={k}>
