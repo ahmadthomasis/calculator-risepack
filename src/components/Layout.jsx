@@ -58,12 +58,23 @@ const masterDataItems = [
   { path: '/pricing-dataset', label: 'Pricing', Icon: TagIcon },
 ]
 
-export default function Layout({ children, title }) {
+export default function Layout({ children, title, beforeNavigate }) {
   const { profile, signOut } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
 
   const isHomeActive = location.pathname === '/'
+
+  // Bungkus navigate(): kalau halaman saat ini (mis. Calculator) kasih beforeNavigate,
+  // jalankan dulu (mis. auto-save draft) dan TUNGGU selesai, baru benar-benar pindah.
+  // Ini menjamin urutan: simpan dulu, baru navigasi — tidak bergantung pada cleanup
+  // function useEffect yang tidak bisa di-await dan rawan race condition.
+  async function goTo(path) {
+    if (beforeNavigate) {
+      try { await beforeNavigate() } catch (e) { console.error('beforeNavigate gagal:', e) }
+    }
+    navigate(path)
+  }
 
   return (
     <div style={{ minHeight:'100vh', background:'#F5EFE6', display:'flex' }}>
@@ -88,7 +99,7 @@ export default function Layout({ children, title }) {
         </div>
 
         <button
-          onClick={() => navigate('/')}
+          onClick={() => goTo('/')}
           style={{
             width:64, display:'flex', flexDirection:'column', alignItems:'center', gap:4,
             padding:'10px 4px', borderRadius:10, border:'none', cursor:'pointer',
@@ -106,7 +117,7 @@ export default function Layout({ children, title }) {
           return (
             <button
               key={item.path}
-              onClick={() => navigate(item.path)}
+              onClick={() => goTo(item.path)}
               style={{
                 width:64, display:'flex', flexDirection:'column', alignItems:'center', gap:4,
                 padding:'10px 4px', borderRadius:10, border:'none', cursor:'pointer',
@@ -132,7 +143,7 @@ export default function Layout({ children, title }) {
               return (
                 <button
                   key={item.path}
-                  onClick={() => navigate(item.path)}
+                  onClick={() => goTo(item.path)}
                   style={{
                     width:64, display:'flex', flexDirection:'column', alignItems:'center', gap:4,
                     padding:'10px 4px', borderRadius:10, border:'none', cursor:'pointer',
@@ -176,7 +187,7 @@ export default function Layout({ children, title }) {
                 return (
                   <button
                     key={tab.path}
-                    onClick={() => navigate(tab.path)}
+                    onClick={() => goTo(tab.path)}
                     style={{
                       padding:'6px 14px',
                       fontSize:13,
