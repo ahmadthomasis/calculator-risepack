@@ -14,7 +14,7 @@ const PRODUCT_TYPES = {
 const FINISHING_OPTIONS = [
   'Poly Gold','Poly Silver','Poly Biasa',
   'Laminasi Glossy','Laminasi Doff',
-  'Varnish UV','Waterbase',
+  'Varnish UV','Waterbase','Spot UV',
   'Emboss','Deboss',
   'Pond','Lem Samping',
 ]
@@ -132,11 +132,10 @@ export default function SalesDashboard() {
     setShowForm(false)
   }
 
-  async function handleImageUpload(e) {
-    const file = e.target.files[0]
+  async function uploadFile(file) {
     if (!file) return
     setUploading(true)
-    const ext  = file.name.split('.').pop()
+    const ext  = (file.name && file.name.includes('.')) ? file.name.split('.').pop() : 'png'
     const path = `requests/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('request - image').upload(path, file)
     if (!error) {
@@ -147,6 +146,23 @@ export default function SalesDashboard() {
       alert('Upload gagal. Pastikan Supabase Storage bucket "request-images" sudah dibuat.')
     }
     setUploading(false)
+  }
+
+  async function handleImageUpload(e) {
+    await uploadFile(e.target.files[0])
+  }
+
+  function handlePaste(e) {
+    const items = e.clipboardData?.items
+    if (!items) return
+    for (const item of items) {
+      if (item.type.startsWith('image/')) {
+        e.preventDefault()
+        const file = item.getAsFile()
+        if (file) uploadFile(file)
+        break
+      }
+    }
   }
 
   async function handleSubmit(e) {
@@ -328,7 +344,16 @@ export default function SalesDashboard() {
 
             {/* Upload gambar */}
             <label style={s.label}>Gambar Referensi / Artwork</label>
-            <div style={{ border:`2px dashed ${C.border}`, borderRadius:8, padding:16, textAlign:'center', background:C.cream }}>
+            <div
+              onPaste={handlePaste}
+              tabIndex={0}
+              style={{
+                border:`2px dashed ${C.border}`, borderRadius:8, padding:16, textAlign:'center',
+                background:C.cream, outline:'none', cursor:'text',
+              }}
+              onFocus={e => e.currentTarget.style.borderColor = C.orange}
+              onBlur={e => e.currentTarget.style.borderColor = C.border}
+            >
               {previewUrl ? (
                 <div>
                   <img src={previewUrl} alt="preview"
@@ -343,8 +368,11 @@ export default function SalesDashboard() {
               ) : (
                 <div>
                   <div style={{ fontSize:32, marginBottom:8 }}>🖼️</div>
-                  <div style={{ fontSize:13, color:C.brown, marginBottom:12 }}>
-                    Upload gambar referensi (JPG, PNG, PDF)
+                  <div style={{ fontSize:13, color:C.brown, marginBottom:4 }}>
+                    {uploading ? 'Mengupload...' : 'Upload gambar referensi (JPG, PNG, PDF)'}
+                  </div>
+                  <div style={{ fontSize:11, color:'#9ca3af', marginBottom:12 }}>
+                    Klik area ini lalu tekan Cmd+V (Mac) / Ctrl+V untuk paste gambar dari clipboard
                   </div>
                   <button type="button"
                     onClick={() => fileRef.current.click()}
@@ -456,5 +484,6 @@ export default function SalesDashboard() {
     </Layout>
   )
 }
+
 
 
