@@ -158,14 +158,14 @@ export default function ManagerDashboard() {
             <table style={{ width:'100%', borderCollapse:'collapse' }}>
               <thead>
                 <tr>
-                  {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Tanggal'].map(h => (
+                  {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Purchasing','Tanggal'].map(h => (
                     <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:12, color:'#9ca3af', fontWeight:500, borderBottom:'2px solid #f3f4f6' }}>{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {quotations.length === 0 && (
-                  <tr><td colSpan={7} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Belum ada quotation</td></tr>
+                  <tr><td colSpan={8} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Belum ada quotation</td></tr>
                 )}
                 {quotations.slice(0, 20).map(q => (
                   <tr key={q.id}>
@@ -192,6 +192,31 @@ export default function ManagerDashboard() {
                           <option value="followup">Followup 🔄</option>
                         </select>
                       </div>
+                    </td>
+                    <td style={{ padding:'10px' }}>
+                      {!q.purchasing_status ? (
+                        q.deal_status === 'deal' ? (
+                          <button
+                            onClick={async () => {
+                              if (!confirm('Kirim quotation ini ke Purchasing untuk divalidasi?')) return
+                              await supabase.from('quotations').update({
+                                purchasing_status: 'pending',
+                                sent_to_purchasing_at: new Date().toISOString(),
+                              }).eq('id', q.id)
+                              loadData()
+                            }}
+                            style={{ padding:'5px 10px', background:'#fff', border:'1px solid #2563eb', color:'#2563eb', borderRadius:6, fontSize:12, fontWeight:500, cursor:'pointer' }}
+                          >Kirim ke Purchasing</button>
+                        ) : <span style={{ fontSize:12, color:'#d1d5db' }}>—</span>
+                      ) : (
+                        <span style={{
+                          padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500,
+                          background: { pending:'#d9770618', approved:'#16a34a18', hold:'#d9770618', cancelled:'#dc262618' }[q.purchasing_status],
+                          color: { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }[q.purchasing_status],
+                        }}>
+                          {{ pending:'Menunggu', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }[q.purchasing_status]}
+                        </span>
+                      )}
                     </td>
                     <td style={{ padding:'10px', fontSize:12, color:'#9ca3af' }}>
                       {new Date(q.created_at).toLocaleDateString('id-ID')}
