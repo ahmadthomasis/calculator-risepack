@@ -57,11 +57,13 @@ const s = {
   }),
 }
 
+const MAX_IMAGES = 3
+
 const emptyForm = {
   customer_name:'', product_category:'Hardbox', product_type:'Hardbox Two Pieces',
   quantity:'', priority:'normal', product_size:'',
   luas_permukaan:'', material_spec:'', print_spec:'',
-  finishing:[], notes:'', image_url:'',
+  finishing:[], notes:'', image_urls:[],
 }
 
 export default function SalesDashboard() {
@@ -72,7 +74,6 @@ export default function SalesDashboard() {
   const [success, setSuccess]     = useState(false)
   const [showForm, setShowForm]   = useState(false)
   const [uploading, setUploading] = useState(false)
-  const [previewUrl, setPreviewUrl] = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [editingId, setEditingId] = useState(null)
   const [editingStatus, setEditingStatus] = useState(null)
@@ -116,6 +117,9 @@ export default function SalesDashboard() {
   }
 
   function startEdit(r) {
+    const images = Array.isArray(r.reference_images) && r.reference_images.length > 0
+      ? r.reference_images
+      : (r.reference_image ? [r.reference_image] : [])
     setForm({
       customer_name: r.customer_name || '',
       product_category: Object.keys(PRODUCT_TYPES).find(k => PRODUCT_TYPES[k].includes(r.product_type)) || 'Hardbox',
@@ -128,9 +132,8 @@ export default function SalesDashboard() {
       print_spec: r.print_spec || '',
       finishing: r.finishing_spec ? r.finishing_spec.split(', ').filter(Boolean) : [],
       notes: r.notes || '',
-      image_url: r.reference_image || '',
+      image_urls: images,
     })
-    setPreviewUrl(r.reference_image || '')
     setEditingId(r.id)
     setEditingStatus(r.status)
     setShowForm(true)
@@ -141,28 +144,35 @@ export default function SalesDashboard() {
     setEditingId(null)
     setEditingStatus(null)
     setForm(emptyForm)
-    setPreviewUrl('')
     setShowForm(false)
   }
 
   async function uploadFile(file) {
     if (!file) return
+    if (form.image_urls.length >= MAX_IMAGES) {
+      alert(`Maksimal ${MAX_IMAGES} gambar per request.`)
+      return
+    }
     setUploading(true)
     const ext  = (file.name && file.name.includes('.')) ? file.name.split('.').pop() : 'png'
     const path = `requests/${Date.now()}.${ext}`
     const { error } = await supabase.storage.from('request - image').upload(path, file)
     if (!error) {
       const { data: { publicUrl } } = supabase.storage.from('request - image').getPublicUrl(path)
-      setForm(f => ({ ...f, image_url: publicUrl }))
-      setPreviewUrl(publicUrl)
+      setForm(f => ({ ...f, image_urls: [...f.image_urls, publicUrl] }))
     } else {
       alert('Upload gagal. Pastikan Supabase Storage bucket "request-images" sudah dibuat.')
     }
     setUploading(false)
   }
 
+  function removeImage(index) {
+    setForm(f => ({ ...f, image_urls: f.image_urls.filter((_, i) => i !== index) }))
+  }
+
   async function handleImageUpload(e) {
     await uploadFile(e.target.files[0])
+    e.target.value = '' // reset supaya bisa pilih file sama lagi kalau perlu
   }
 
   function handlePaste(e) {
@@ -191,7 +201,8 @@ export default function SalesDashboard() {
       print_spec:     form.print_spec,
       finishing_spec: form.finishing.join(', '),
       notes:          form.notes,
-      reference_image: form.image_url,
+      reference_images: form.image_urls,
+      reference_image: form.image_urls[0] || '', // kompatibilitas mundur, kolom lama tetap diisi gambar pertama
       plano_size:     form.luas_permukaan,
     }
 
@@ -355,48 +366,57 @@ export default function SalesDashboard() {
               </div>
             )}
 
-            {/* Upload gambar */}
-            <label style={s.label}>Gambar Referensi / Artwork</label>
-            <div
-              onPaste={handlePaste}
-              tabIndex={0}
-              style={{
-                border:`2px dashed ${C.border}`, borderRadius:8, padding:16, textAlign:'center',
-                background:C.cream, outline:'none', cursor:'text',
-              }}
-              onFocus={e => e.currentTarget.style.borderColor = C.orange}
-              onBlur={e => e.currentTarget.style.borderColor = C.border}
-            >
-              {previewUrl ? (
-                <div>
-                  <img src={previewUrl} alt="preview"
-                    style={{ maxHeight:200, maxWidth:'100%', borderRadius:8, marginBottom:8 }} />
-                  <div>
-                    <button type="button" onClick={() => { setPreviewUrl(''); setForm(f => ({...f, image_url:''})) }}
-                      style={{ fontSize:12, color:'#dc2626', background:'none', border:'none', cursor:'pointer' }}>
-                      Hapus gambar
-                    </button>
+            {/* Upload gambar — galeri maks 3 */}
+            <label style={s.label}>Gambar Referensi / Artwork ({form.image_urls.length}/{MAX_IMAGES})</label>
+
+            {form.image_urls.length > 0 && (
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(140px, 1fr))', gap:10, marginBottom:10 }}>
+                {form.image_urls.map((url, i) => (
+                  <div key={i} style={{ position:'relative', border:`1px solid ${C.border}`, borderRadius:8, overflow:'hidden', background:C.cream }}>
+                    <img src={url} alt={`referensi ${i+1}`} style={{ width:'100%', height:120, objectFit:'cover', display:'block' }} />
+                    <button type="button" onClick={() => removeImage(i)}
+                      style={{
+                        position:'absolute', top:4, right:4, width:22, height:22, borderRadius:'50%',
+                        background:'rgba(220,38,38,0.9)', color:'#fff', border:'none', cursor:'pointer',
+                        fontSize:12, lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center',
+                      }}>✕</button>
                   </div>
+                ))}
+              </div>
+            )}
+
+            {form.image_urls.length < MAX_IMAGES ? (
+              <div
+                onPaste={handlePaste}
+                tabIndex={0}
+                style={{
+                  border:`2px dashed ${C.border}`, borderRadius:8, padding:16, textAlign:'center',
+                  background:C.cream, outline:'none', cursor:'text',
+                }}
+                onFocus={e => e.currentTarget.style.borderColor = C.orange}
+                onBlur={e => e.currentTarget.style.borderColor = C.border}
+              >
+                <div style={{ fontSize:32, marginBottom:8 }}>🖼️</div>
+                <div style={{ fontSize:13, color:C.brown, marginBottom:4 }}>
+                  {uploading ? 'Mengupload...' : `Tambah gambar (boleh ${MAX_IMAGES - form.image_urls.length} lagi)`}
                 </div>
-              ) : (
-                <div>
-                  <div style={{ fontSize:32, marginBottom:8 }}>🖼️</div>
-                  <div style={{ fontSize:13, color:C.brown, marginBottom:4 }}>
-                    {uploading ? 'Mengupload...' : 'Upload gambar referensi (JPG, PNG, PDF)'}
-                  </div>
-                  <div style={{ fontSize:11, color:'#9ca3af', marginBottom:12 }}>
-                    Klik area ini lalu tekan Cmd+V (Mac) / Ctrl+V untuk paste gambar dari clipboard
-                  </div>
-                  <button type="button"
-                    onClick={() => fileRef.current.click()}
-                    style={{ padding:'8px 16px', background:C.white, border:`1px solid ${C.border}`, borderRadius:8, fontSize:13, cursor:'pointer', color:C.dark }}>
-                    {uploading ? 'Mengupload...' : 'Pilih File'}
-                  </button>
-                  <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display:'none' }}
-                    onChange={handleImageUpload} />
+                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:12 }}>
+                  Klik area ini lalu tekan Cmd+V (Mac) / Ctrl+V untuk paste gambar dari clipboard
                 </div>
-              )}
-            </div>
+                <button type="button"
+                  onClick={() => fileRef.current.click()}
+                  disabled={uploading}
+                  style={{ padding:'8px 16px', background:C.white, border:`1px solid ${C.border}`, borderRadius:8, fontSize:13, cursor:'pointer', color:C.dark }}>
+                  {uploading ? 'Mengupload...' : 'Pilih File'}
+                </button>
+                <input ref={fileRef} type="file" accept="image/*,.pdf" style={{ display:'none' }}
+                  onChange={handleImageUpload} />
+              </div>
+            ) : (
+              <div style={{ fontSize:12, color:'#9ca3af', padding:'8px 0' }}>
+                Sudah mencapai batas {MAX_IMAGES} gambar. Hapus salah satu untuk menambah yang baru.
+              </div>
+            )}
 
             <label style={s.label}>Catatan Tambahan</label>
             <textarea style={s.textarea} rows={3} value={form.notes}
@@ -442,10 +462,18 @@ export default function SalesDashboard() {
                   <td style={s.td}><div style={{ fontWeight:500 }}>{r.customer_name}</div></td>
                   <td style={s.td}>
                     <div style={{ fontSize:13 }}>{r.product_type}</div>
-                    {r.reference_image && (
-                      <a href={r.reference_image} target="_blank" rel="noreferrer"
-                        style={{ fontSize:11, color:C.orange }}>🖼️ Lihat gambar</a>
-                    )}
+                    {(() => {
+                      const imgs = Array.isArray(r.reference_images) && r.reference_images.length > 0
+                        ? r.reference_images
+                        : (r.reference_image ? [r.reference_image] : [])
+                      if (imgs.length === 0) return null
+                      return (
+                        <a href={imgs[0]} target="_blank" rel="noreferrer"
+                          style={{ fontSize:11, color:C.orange }}>
+                          🖼️ Lihat gambar{imgs.length > 1 ? ` (${imgs.length})` : ''}
+                        </a>
+                      )
+                    })()}
                   </td>
                   <td style={s.td}>{r.quantity?.toLocaleString('id-ID')}</td>
                   <td style={s.td}><span style={s.badge(r.status)}>{STATUS_LABEL[r.status]}</span></td>
@@ -497,6 +525,7 @@ export default function SalesDashboard() {
     </Layout>
   )
 }
+
 
 
 
