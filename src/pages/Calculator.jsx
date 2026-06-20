@@ -81,6 +81,12 @@ export default function Calculator() {
   }))
 
   // ── Auto-save draft (dipanggil manual saat pindah qty, dan otomatis saat unmount) ──
+  // PENTING: sengaja cuma 1 network call (INSERT langsung, tanpa cek existing dulu),
+  // karena ini dipanggil dari cleanup function saat user pindah halaman — kalau ada
+  // 2 call berantai (SELECT lalu INSERT/UPDATE), call kedua sering tidak sempat
+  // terkirim sebelum browser pindah ke komponen halaman berikutnya.
+  // Konsekuensi: bisa numpuk beberapa baris draft duplikat. Itu ditangani saat
+  // loadAll() — ambil draft TERBARU saja, lalu hapus duplikat yang lebih lama.
   async function saveDraftFor(qty, state) {
     if (qty == null || !state.requestId || !state.profile) return
     // Jangan timpa draft kalau qty ini sudah punya quotation FINAL tersimpan
@@ -91,28 +97,13 @@ export default function Calculator() {
     if (isEmpty) return
 
     try {
-      // Cari draft existing milik estimator ini untuk request+qty ini
-      const { data: existing } = await supabase.from('quotations')
-        .select('id')
-        .eq('request_id', state.requestId).eq('quantity', qty)
-        .eq('estimator_id', state.profile.id).eq('is_draft', true)
-        .maybeSingle()
-
-      const payload = {
+      await supabase.from('quotations').insert({
+        request_id: state.requestId, estimator_id: state.profile.id, quantity: qty,
+        is_draft: true, is_active: false, deal_status: 'quoted',
         material_cost: state.material, cetak_cost: state.cetak, emboss_laminasi: state.emboss,
         material_proses: state.matProses, finishing_wo: state.finishing, additional_cost: state.additional,
         margin_percent: num(state.margin), updated_at: new Date().toISOString(),
-      }
-
-      if (existing) {
-        await supabase.from('quotations').update(payload).eq('id', existing.id)
-      } else {
-        await supabase.from('quotations').insert({
-          request_id: state.requestId, estimator_id: state.profile.id, quantity: qty,
-          is_draft: true, is_active: false, deal_status: 'quoted',
-          ...payload,
-        })
-      }
+      })
     } catch (e) {
       // Auto-save draft tidak boleh mengganggu alur utama kalau gagal (mis. offline).
       // Paling buruk: draft tidak tersimpan, kembali ke perilaku lama.
@@ -198,9 +189,12 @@ export default function Calculator() {
       .eq('request_id', requestId).eq('is_active', true).eq('is_draft', false)
 
     // Load draft milik estimator yang sedang login untuk request ini (auto-save dari sesi sebelumnya)
+    // Urutkan terbaru dulu, supaya kalau ada duplikat (lihat catatan di saveDraftFor),
+    // draft yang dipakai adalah yang paling baru.
     const { data: drafts } = profile
       ? await supabase.from('quotations').select('*')
           .eq('request_id', requestId).eq('estimator_id', profile.id).eq('is_draft', true)
+          .order('updated_at', { ascending: false })
       : { data: [] }
 
     // Tentukan daftar qty: dari quantities (array baru) dengan fallback ke quantity (lama, tunggal)
@@ -229,16 +223,26 @@ export default function Calculator() {
         margin: q.margin_percent || 15,
       }
     })
-    // Isi cache dari DRAFT untuk qty yang BELUM punya quotation final
-    // (draft tidak boleh menimpa data final yang sudah tersimpan)
+    // Isi cache dari DRAFT untuk qty yang BELUM punya quotation final.
+    // Karena drafts sudah terurut terbaru dulu, draft pertama yang ditemukan
+    // untuk tiap qty adalah yang dipakai; sisanya (duplikat lama) ditandai untuk dihapus.
+    const staleDraftIds = []
+    const seenDraftQtys = new Set()
     ;(drafts || []).forEach(d => {
-      if (qtyCache[d.quantity]) return // sudah ada final, skip draft
+      if (qtyCache[d.quantity]) { staleDraftIds.push(d.id); return } // sudah ada final, draft ini basi
+      if (seenDraftQtys.has(d.quantity)) { staleDraftIds.push(d.id); return } // duplikat lebih lama, basi
+      seenDraftQtys.add(d.quantity)
       qtyCache[d.quantity] = {
         material: normGsm(d.material_cost), cetak: d.cetak_cost || [], emboss: d.emboss_laminasi || [],
         matProses: d.material_proses || [], finishing: d.finishing_wo || [], additional: d.additional_cost || [],
         margin: d.margin_percent || 15,
       }
     })
+    // Bersihkan draft basi di background, tidak perlu ditunggu (tidak mempengaruhi tampilan)
+    if (staleDraftIds.length > 0) {
+      supabase.from('quotations').delete().in('id', staleDraftIds)
+        .then(({ error }) => { if (error) console.error('Gagal bersihkan draft basi:', error) })
+    }
 
     // Mulai dari qty pertama yang belum tersimpan, atau qty pertama kalau semua sudah tersimpan
     const firstUnsaved = qtys.find(q => !savedQtyNumbers.includes(q))
