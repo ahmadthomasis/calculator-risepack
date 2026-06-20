@@ -45,6 +45,11 @@ export default function EstimatorQueue() {
         setPulse(true)
         setTimeout(() => setPulse(false), 2000)
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, () => {
+        fetchRequests()
+        setPulse(true)
+        setTimeout(() => setPulse(false), 2000)
+      })
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [])
@@ -213,4 +218,5 @@ export default function EstimatorQueue() {
     </Layout>
   )
 }
+
 
