@@ -65,23 +65,86 @@ export default function Calculator() {
   const [savedQtys, setSavedQtys]     = useState([])   // qty yang sudah punya quotation tersimpan
   const qtyCache = useRef({}).current                   // cache state per-qty di memori (tidak re-render saat diisi)
 
+  // Snapshot state terkini, dipakai di cleanup function useEffect supaya
+  // tidak baca closure basi (cleanup tidak re-register tiap keystroke)
+  const latestRef = useRef({})
+  useEffect(() => {
+    latestRef.current = {
+      requestId, profile, activeQty, savedQtys, qtyList,
+      material, cetak, emboss, matProses, finishing, additional, margin,
+    }
+  })
+
   const normGsm = (rows) => (rows || []).map(r => ({
     ...r,
     gsm: String(r.gsm || '').toLowerCase().replace('gsm','').trim()
   }))
 
+  // ── Auto-save draft (dipanggil manual saat pindah qty, dan otomatis saat unmount) ──
+  async function saveDraftFor(qty, state) {
+    if (qty == null || !state.requestId || !state.profile) return
+    // Jangan timpa draft kalau qty ini sudah punya quotation FINAL tersimpan
+    if (state.savedQtys.includes(qty)) return
+    // Jangan simpan draft kosong (tidak ada isian sama sekali)
+    const isEmpty = ['material','cetak','emboss','matProses','finishing','additional']
+      .every(k => !Array.isArray(state[k]) || state[k].length === 0)
+    if (isEmpty) return
+
+    try {
+      // Cari draft existing milik estimator ini untuk request+qty ini
+      const { data: existing } = await supabase.from('quotations')
+        .select('id')
+        .eq('request_id', state.requestId).eq('quantity', qty)
+        .eq('estimator_id', state.profile.id).eq('is_draft', true)
+        .maybeSingle()
+
+      const payload = {
+        material_cost: state.material, cetak_cost: state.cetak, emboss_laminasi: state.emboss,
+        material_proses: state.matProses, finishing_wo: state.finishing, additional_cost: state.additional,
+        margin_percent: num(state.margin), updated_at: new Date().toISOString(),
+      }
+
+      if (existing) {
+        await supabase.from('quotations').update(payload).eq('id', existing.id)
+      } else {
+        await supabase.from('quotations').insert({
+          request_id: state.requestId, estimator_id: state.profile.id, quantity: qty,
+          is_draft: true, is_active: false, deal_status: 'quoted',
+          ...payload,
+        })
+      }
+    } catch (e) {
+      // Auto-save draft tidak boleh mengganggu alur utama kalau gagal (mis. offline).
+      // Paling buruk: draft tidak tersimpan, kembali ke perilaku lama.
+      console.error('Gagal auto-save draft:', e)
+    }
+  }
+
   useEffect(() => { loadAll() }, [requestId])
+
+  // Auto-save draft untuk qty yang sedang aktif, tepat sebelum requestId berganti
+  // atau komponen unmount (mis. user pindah ke Potong Kertas / kembali ke Antrian).
+  useEffect(() => {
+    return () => {
+      const snap = latestRef.current
+      saveDraftFor(snap.activeQty, snap)
+    }
+  }, [requestId])
 
   useEffect(() => {
     if (requestId) localStorage.setItem('risepack_last_calculator_request', requestId)
   }, [requestId])
 
   // ── Pindah tab quantity ─────────────────────────────────────
-  function switchQty(newQty) {
+  // savedQtysOverride: dipakai saat dipanggil tepat setelah handleSave, karena
+  // latestRef.current.savedQtys mungkin belum sinkron (useEffect belum jalan ulang).
+  function switchQty(newQty, savedQtysOverride) {
     if (newQty === activeQty) return
 
     // Simpan state section saat ini ke cache sebelum pindah
     qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin }
+    // Auto-save draft qty yang sedang ditinggalkan (tidak perlu await, biar UI tetap responsif)
+    saveDraftFor(activeQty, { ...latestRef.current, savedQtys: savedQtysOverride || latestRef.current.savedQtys })
 
     if (qtyCache[newQty]) {
       // Qty ini sudah pernah dibuka/tersimpan, load dari cache
@@ -132,7 +195,13 @@ export default function Calculator() {
     ])
     // Load semua quotation aktif untuk request ini (bisa lebih dari 1, satu per qty)
     const { data: quots } = await supabase.from('quotations').select('*')
-      .eq('request_id', requestId).eq('is_active', true)
+      .eq('request_id', requestId).eq('is_active', true).eq('is_draft', false)
+
+    // Load draft milik estimator yang sedang login untuk request ini (auto-save dari sesi sebelumnya)
+    const { data: drafts } = profile
+      ? await supabase.from('quotations').select('*')
+          .eq('request_id', requestId).eq('estimator_id', profile.id).eq('is_draft', true)
+      : { data: [] }
 
     // Tentukan daftar qty: dari quantities (array baru) dengan fallback ke quantity (lama, tunggal)
     const qtys = Array.isArray(req?.quantities) && req.quantities.length > 0
@@ -152,12 +221,22 @@ export default function Calculator() {
     const savedQtyNumbers = (quots || []).map(q => q.quantity)
     setSavedQtys(savedQtyNumbers)
 
-    // Isi cache dari quotation yang sudah tersimpan
+    // Isi cache dari quotation FINAL yang sudah tersimpan (prioritas utama)
     ;(quots || []).forEach(q => {
       qtyCache[q.quantity] = {
         material: normGsm(q.material_cost), cetak: q.cetak_cost || [], emboss: q.emboss_laminasi || [],
         matProses: q.material_proses || [], finishing: q.finishing_wo || [], additional: q.additional_cost || [],
         margin: q.margin_percent || 15,
+      }
+    })
+    // Isi cache dari DRAFT untuk qty yang BELUM punya quotation final
+    // (draft tidak boleh menimpa data final yang sudah tersimpan)
+    ;(drafts || []).forEach(d => {
+      if (qtyCache[d.quantity]) return // sudah ada final, skip draft
+      qtyCache[d.quantity] = {
+        material: normGsm(d.material_cost), cetak: d.cetak_cost || [], emboss: d.emboss_laminasi || [],
+        matProses: d.material_proses || [], finishing: d.finishing_wo || [], additional: d.additional_cost || [],
+        margin: d.margin_percent || 15,
       }
     })
 
@@ -388,6 +467,11 @@ export default function Calculator() {
     })
 
     if (!error) {
+      // Hapus draft (kalau ada) untuk qty ini karena sudah final tersimpan
+      await supabase.from('quotations').delete()
+        .eq('request_id', requestId).eq('quantity', activeQty)
+        .eq('estimator_id', profile.id).eq('is_draft', true)
+
       qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin }
       const newSavedQtys = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]
       setSavedQtys(newSavedQtys)
@@ -398,7 +482,7 @@ export default function Calculator() {
         navigate('/')
       } else {
         const nextQty = qtyList.find(q => !newSavedQtys.includes(q))
-        if (nextQty != null) switchQty(nextQty)
+        if (nextQty != null) switchQty(nextQty, newSavedQtys)
       }
     }
     setSaving(false)
