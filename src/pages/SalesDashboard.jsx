@@ -80,6 +80,19 @@ export default function SalesDashboard() {
 
   useEffect(() => { fetchRequests() }, [])
 
+  useEffect(() => {
+    const channel = supabase
+      .channel('sales-dashboard-changes')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'requests' }, () => {
+        fetchRequests()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, () => {
+        fetchRequests()
+      })
+      .subscribe()
+    return () => supabase.removeChannel(channel)
+  }, [])
+
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
