@@ -10,6 +10,8 @@ import ManagerDashboard from './pages/ManagerDashboard'
 import PotongKertas from './pages/PotongKertas'
 import PricingDataset from './pages/PricingDataset'
 import UserManagement from './pages/UserManagement'
+import PurchasingQueue from './pages/PurchasingQueue'
+import PurchasingReview from './pages/PurchasingReview'
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth()
@@ -46,11 +48,22 @@ function RoleRouter() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
+      {profile.role === 'purchasing' && (
+        <>
+          <Route path="/" element={<Navigate to="/purchasing" replace />} />
+          <Route path="/purchasing" element={<PurchasingQueue />} />
+          <Route path="/purchasing/:quotationId" element={<PurchasingReview />} />
+          <Route path="/potong-kertas" element={<PotongKertas />} />
+          <Route path="*" element={<Navigate to="/purchasing" replace />} />
+        </>
+      )}
       {profile.role === 'manager' && (
         <>
           <Route path="/" element={<ManagerDashboard />} />
           <Route path="/sales" element={<SalesDashboard />} />
           <Route path="/estimator" element={<EstimatorQueue />} />
+          <Route path="/purchasing" element={<PurchasingQueue />} />
+          <Route path="/purchasing/:quotationId" element={<PurchasingReview />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />
