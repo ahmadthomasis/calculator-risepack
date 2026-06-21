@@ -59,8 +59,8 @@ export default function Calculator() {
   const [finishing,  setFinishing]  = useState([])
   const [additional, setAdditional] = useState([])
 
-  // ── Sumber perhitungan: internal (default) atau vendor ──────
-  const [costSource, setCostSource] = useState('internal') // 'internal' | 'vendor'
+  // ── Pembanding harga vendor (opsional, TIDAK menggantikan hitung manual) ──
+  const [hasVendorComparison, setHasVendorComparison] = useState(false)
   const [vendorName, setVendorName] = useState('')
   const [vendorPricePerPcs, setVendorPricePerPcs] = useState('')
   const [vendorNameSuggestions, setVendorNameSuggestions] = useState([])
@@ -78,7 +78,7 @@ export default function Calculator() {
     latestRef.current = {
       requestId, profile, request, activeQty, savedQtys, qtyList,
       material, cetak, emboss, matProses, finishing, additional, margin,
-      costSource, vendorName, vendorPricePerPcs,
+      hasVendorComparison, vendorName, vendorPricePerPcs,
     }
   })
 
@@ -98,14 +98,11 @@ export default function Calculator() {
     if (qty == null || !state.requestId || !state.profile) return
     // Jangan timpa draft kalau qty ini sudah punya quotation FINAL tersimpan
     if (state.savedQtys.includes(qty)) return
-    // Jangan simpan draft kosong (tidak ada isian sama sekali).
-    // Untuk mode internal: cek 6 section seperti biasa.
-    // Untuk mode vendor: 6 section memang selalu kosong (tidak dipakai),
-    // jadi cek isi field vendor sebagai gantinya.
-    const isEmptyInternal = ['material','cetak','emboss','matProses','finishing','additional']
+    // Jangan simpan draft kosong (tidak ada isian sama sekali di 6 section).
+    // Vendor cuma data pembanding tambahan, tidak menggantikan isian 6 section,
+    // jadi tidak relevan dipakai sebagai penentu kosong/tidaknya draft.
+    const isEmpty = ['material','cetak','emboss','matProses','finishing','additional']
       .every(k => !Array.isArray(state[k]) || state[k].length === 0)
-    const isEmptyVendor = !state.vendorName && (state.vendorPricePerPcs === '' || state.vendorPricePerPcs == null)
-    const isEmpty = state.costSource === 'vendor' ? isEmptyVendor : isEmptyInternal
     if (isEmpty) return
 
     try {
@@ -116,9 +113,9 @@ export default function Calculator() {
         material_cost: state.material, cetak_cost: state.cetak, emboss_laminasi: state.emboss,
         material_proses: state.matProses, finishing_wo: state.finishing, additional_cost: state.additional,
         margin_percent: num(state.margin), updated_at: new Date().toISOString(),
-        cost_source: state.costSource || 'internal',
-        vendor_name: state.costSource === 'vendor' ? (state.vendorName || null) : null,
-        vendor_price_per_pcs: state.costSource === 'vendor' ? (num(state.vendorPricePerPcs) || null) : null,
+        cost_source: state.hasVendorComparison ? 'vendor' : 'internal',
+        vendor_name: state.hasVendorComparison ? (state.vendorName || null) : null,
+        vendor_price_per_pcs: state.hasVendorComparison ? (num(state.vendorPricePerPcs) || null) : null,
         // Draft belum final, jadi kalkulasi total belum relevan — isi 0 sebagai
         // default aman untuk berjaga-jaga kalau ada NOT NULL constraint di kolom ini.
         subtotal_material: 0, subtotal_cetak: 0, subtotal_emboss: 0,
@@ -159,7 +156,7 @@ export default function Calculator() {
     if (newQty === activeQty) return
 
     // Simpan state section saat ini ke cache sebelum pindah
-    qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin, costSource, vendorName, vendorPricePerPcs }
+    qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin, hasVendorComparison, vendorName, vendorPricePerPcs }
     // Auto-save draft qty yang sedang ditinggalkan. DITUNGGU (await) supaya pasti
     // selesai tersimpan sebelum UI pindah ke tab qty berikutnya.
     await saveDraftFor(activeQty, { ...latestRef.current, savedQtys: savedQtysOverride || latestRef.current.savedQtys })
@@ -170,7 +167,7 @@ export default function Calculator() {
       setMaterial(c.material); setCetak(c.cetak); setEmboss(c.emboss)
       setMatProses(c.matProses); setFinishing(c.finishing); setAdditional(c.additional)
       setMargin(c.margin)
-      setCostSource(c.costSource || 'internal'); setVendorName(c.vendorName || ''); setVendorPricePerPcs(c.vendorPricePerPcs ?? '')
+      setHasVendorComparison(c.hasVendorComparison || false); setVendorName(c.vendorName || ''); setVendorPricePerPcs(c.vendorPricePerPcs ?? '')
     } else {
       // Qty ini belum pernah dibuka, prefill dari qty pertama (kalau ada),
       // qty & insheet dikosongkan ulang karena nilainya pasti beda untuk qty lain.
@@ -192,7 +189,7 @@ export default function Calculator() {
         setMaterial([]); setCetak([]); setEmboss([]); setMatProses([]); setFinishing([]); setAdditional([])
         setMargin(15)
       }
-      setCostSource('internal'); setVendorName(''); setVendorPricePerPcs('')
+      setHasVendorComparison(false); setVendorName(''); setVendorPricePerPcs('')
     }
     setActiveQty(newQty)
   }
@@ -260,7 +257,7 @@ export default function Calculator() {
         material: normGsm(q.material_cost), cetak: q.cetak_cost || [], emboss: q.emboss_laminasi || [],
         matProses: q.material_proses || [], finishing: q.finishing_wo || [], additional: q.additional_cost || [],
         margin: q.margin_percent || 15,
-        costSource: q.cost_source || 'internal',
+        hasVendorComparison: q.cost_source === 'vendor',
         vendorName: q.vendor_name || '',
         vendorPricePerPcs: q.vendor_price_per_pcs ?? '',
       }
@@ -278,7 +275,7 @@ export default function Calculator() {
         material: normGsm(d.material_cost), cetak: d.cetak_cost || [], emboss: d.emboss_laminasi || [],
         matProses: d.material_proses || [], finishing: d.finishing_wo || [], additional: d.additional_cost || [],
         margin: d.margin_percent || 15,
-        costSource: d.cost_source || 'internal',
+        hasVendorComparison: d.cost_source === 'vendor',
         vendorName: d.vendor_name || '',
         vendorPricePerPcs: d.vendor_price_per_pcs ?? '',
       }
@@ -299,11 +296,11 @@ export default function Calculator() {
       setMaterial(c.material); setCetak(c.cetak); setEmboss(c.emboss)
       setMatProses(c.matProses); setFinishing(c.finishing); setAdditional(c.additional)
       setMargin(c.margin)
-      setCostSource(c.costSource || 'internal'); setVendorName(c.vendorName || ''); setVendorPricePerPcs(c.vendorPricePerPcs ?? '')
+      setHasVendorComparison(c.hasVendorComparison || false); setVendorName(c.vendorName || ''); setVendorPricePerPcs(c.vendorPricePerPcs ?? '')
     } else {
       setMaterial([]); setCetak([]); setEmboss([]); setMatProses([]); setFinishing([]); setAdditional([])
       setMargin(15)
-      setCostSource('internal'); setVendorName(''); setVendorPricePerPcs('')
+      setHasVendorComparison(false); setVendorName(''); setVendorPricePerPcs('')
     }
 
     setLoading(false)
@@ -494,12 +491,13 @@ export default function Calculator() {
     finishing:  finCalc.reduce((s, r) => s + (r.subtotal||0), 0),
     additional: addCalc.reduce((s, r) => s + (r.subtotal||0), 0),
   }
-  // Mode vendor: total modal = harga per pcs dari vendor × qty, BUKAN jumlah 6
-  // section (yang memang tidak dipakai/disembunyikan di mode ini).
-  const vendorTotal = activeQty ? num(vendorPricePerPcs) * activeQty : 0
-  const total   = costSource === 'vendor' ? vendorTotal : Object.values(sub).reduce((a, b) => a + b, 0)
+  // Total SELALU dari 6 section (estimator wajib hitung manual). Harga vendor
+  // adalah data PEMBANDING tambahan opsional, tidak pernah menggantikan total ini.
+  const total   = Object.values(sub).reduce((a, b) => a + b, 0)
   const selling = total * (1 + num(margin) / 100)
   const perUnit = activeQty ? selling / activeQty : 0
+  // Harga vendor per pcs × qty, murni untuk ditampilkan sebagai pembanding.
+  const vendorTotal = activeQty ? num(vendorPricePerPcs) * activeQty : 0
 
   async function handleSave() {
     setSaving(true)
@@ -511,26 +509,19 @@ export default function Calculator() {
     const { error } = await supabase.from('quotations').insert({
       request_id: requestId, estimator_id: profile.id,
       customer_name: request.customer_name, product_type: request.product_type, quantity: activeQty,
-      // Mode vendor: 6 section tidak dipakai/disembunyikan, simpan array kosong
-      // supaya tidak ada data section "hantu" dari sesi internal sebelumnya.
-      material_cost: costSource === 'vendor' ? [] : matCalc,
-      cetak_cost: costSource === 'vendor' ? [] : cetakCalc,
-      emboss_laminasi: costSource === 'vendor' ? [] : embCalc,
-      material_proses: costSource === 'vendor' ? [] : mpCalc,
-      finishing_wo: costSource === 'vendor' ? [] : finCalc,
-      additional_cost: costSource === 'vendor' ? [] : additional,
-      subtotal_material: costSource === 'vendor' ? 0 : sub.material,
-      subtotal_cetak: costSource === 'vendor' ? 0 : sub.cetak,
-      subtotal_emboss: costSource === 'vendor' ? 0 : sub.emboss,
-      subtotal_matproses: costSource === 'vendor' ? 0 : sub.matProses,
-      subtotal_finishing: costSource === 'vendor' ? 0 : sub.finishing,
-      subtotal_additional: costSource === 'vendor' ? 0 : sub.additional,
+      material_cost: matCalc, cetak_cost: cetakCalc, emboss_laminasi: embCalc,
+      material_proses: mpCalc, finishing_wo: finCalc, additional_cost: additional,
+      subtotal_material: sub.material, subtotal_cetak: sub.cetak, subtotal_emboss: sub.emboss,
+      subtotal_matproses: sub.matProses, subtotal_finishing: sub.finishing, subtotal_additional: sub.additional,
       total_cost: total, margin_percent: num(margin),
       selling_price: Math.round(selling),
       price_per_unit: perUnit, deal_status: 'quoted',
-      cost_source: costSource,
-      vendor_name: costSource === 'vendor' ? (vendorName || null) : null,
-      vendor_price_per_pcs: costSource === 'vendor' ? (num(vendorPricePerPcs) || null) : null,
+      // Vendor: data PEMBANDING tambahan opsional, tidak pernah menggantikan
+      // hasil hitung manual di atas. cost_source dipakai cuma sebagai penanda
+      // "ada perbandingan vendor" untuk badge tampilan, bukan eksklusif lagi.
+      cost_source: hasVendorComparison ? 'vendor' : 'internal',
+      vendor_name: hasVendorComparison ? (vendorName || null) : null,
+      vendor_price_per_pcs: hasVendorComparison ? (num(vendorPricePerPcs) || null) : null,
     })
 
     if (!error) {
@@ -539,7 +530,7 @@ export default function Calculator() {
         .eq('request_id', requestId).eq('quantity', activeQty)
         .eq('estimator_id', profile.id).eq('is_draft', true)
 
-      qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin, costSource, vendorName, vendorPricePerPcs }
+      qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin, hasVendorComparison, vendorName, vendorPricePerPcs }
       const newSavedQtys = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]
       setSavedQtys(newSavedQtys)
 
@@ -638,33 +629,24 @@ export default function Calculator() {
         </div>
       )}
 
-      {/* Sumber Perhitungan: Internal atau Vendor */}
+      {/* Perbandingan Harga Vendor (opsional, TIDAK menggantikan hitung manual di bawah) */}
       <div style={s.card}>
-        <div style={{ fontSize:14, fontWeight:600, color:C.dark, marginBottom:12 }}>Sumber Perhitungan</div>
-        <div style={{ display:'flex', gap:10, marginBottom: costSource === 'vendor' ? 14 : 0 }}>
-          <button
-            onClick={() => setCostSource('internal')}
-            style={{
-              flex:1, padding:10, borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer', border:'none',
-              background: costSource === 'internal' ? C.dark : '#fff',
-              color: costSource === 'internal' ? '#fff' : '#8a7a68',
-              ...(costSource !== 'internal' ? { border:`1px solid ${C.border}` } : {}),
-            }}
-          >Internal</button>
-          <button
-            onClick={() => setCostSource('vendor')}
-            style={{
-              flex:1, padding:10, borderRadius:8, fontSize:13, fontWeight:500, cursor:'pointer', border:'none',
-              background: costSource === 'vendor' ? C.orange : '#fff',
-              color: costSource === 'vendor' ? C.dark : '#8a7a68',
-              ...(costSource !== 'vendor' ? { border:`1px solid ${C.border}` } : {}),
-            }}
-          >Vendor</button>
+        <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', marginBottom: hasVendorComparison ? 14 : 0 }}>
+          <input
+            type="checkbox"
+            checked={hasVendorComparison}
+            onChange={e => setHasVendorComparison(e.target.checked)}
+            style={{ width:16, height:16, cursor:'pointer' }}
+          />
+          <span style={{ fontSize:14, fontWeight:600, color:C.dark }}>Ada Perbandingan Harga Vendor?</span>
+        </label>
+        <div style={{ fontSize:11, color:'#9ca3af', marginTop: hasVendorComparison ? 0 : 6, marginLeft: hasVendorComparison ? 0 : 26 }}>
+          Perhitungan manual di bawah tetap wajib diisi. Vendor cuma data pembanding tambahan.
         </div>
 
-        {costSource === 'vendor' && (
+        {hasVendorComparison && (
           <>
-            <div style={{ marginBottom:14 }}>
+            <div style={{ marginTop:14, marginBottom:14 }}>
               <label style={{ fontSize:11, color:'#9ca3af', display:'block', marginBottom:4 }}>Nama Vendor</label>
               <input
                 list="vendor-name-suggestions"
@@ -696,21 +678,19 @@ export default function Calculator() {
                 </div>
               </div>
               <div>
-                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Total Modal</div>
+                <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Total Modal Vendor</div>
                 <div style={{ padding:'9px 12px', background:C.border, borderRadius:7, fontSize:13, textAlign:'right', fontWeight:600, color:C.dark }}>
                   {idr(vendorTotal)}
                 </div>
               </div>
             </div>
             <div style={{ fontSize:11, color:'#9ca3af', marginTop:10 }}>
-              Total Modal dihitung otomatis (Harga per pcs × Qty) dan dipakai sebagai dasar margin% di bawah.
+              Murni sebagai pembanding — tidak mempengaruhi Total Modal & Harga Jual dari hitungan manual di bawah.
             </div>
           </>
         )}
       </div>
 
-      {costSource === 'internal' && (
-      <>
       {/* 1. MATERIAL COST */}
       <div style={s.card}>
         <div style={s.sTitle}>
@@ -1005,26 +985,24 @@ export default function Calculator() {
           </tbody>
         </table>
       </div>
-      </>
-      )}
 
       {/* SUMMARY */}
       <div style={{ ...s.card, borderTop:`3px solid #16a34a` }}>
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:32 }}>
           <div>
             <div style={{ fontSize:14, fontWeight:600, color:C.dark, marginBottom:12 }}>Ringkasan Biaya</div>
-            {costSource === 'vendor' ? (
-              <div style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:`1px solid ${C.cream}`, fontSize:13, color:C.dark }}>
-                <span>Modal dari Vendor{vendorName ? ` (${vendorName})` : ''}</span><span style={{ fontFamily:'monospace' }}>{idr(total)}</span>
-              </div>
-            ) : (
-              [['Material Cost',sub.material],['Cetak Cost',sub.cetak],['Emboss / Laminasi',sub.emboss],
+            {[['Material Cost',sub.material],['Cetak Cost',sub.cetak],['Emboss / Laminasi',sub.emboss],
               ['Material Proses',sub.matProses],['Finishing WO',sub.finishing],['Additional Cost',sub.additional]
             ].map(([label,val]) => (
               <div key={label} style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:`1px solid ${C.cream}`, fontSize:13, color:C.dark }}>
                 <span>{label}</span><span style={{ fontFamily:'monospace' }}>{idr(val)}</span>
               </div>
-            )))}
+            ))}
+            {hasVendorComparison && (
+              <div style={{ display:'flex', justifyContent:'space-between', padding:'5px 0', borderBottom:`1px solid ${C.cream}`, fontSize:13, color:'#854F0B' }}>
+                <span>Pembanding Vendor{vendorName ? ` (${vendorName})` : ''}</span><span style={{ fontFamily:'monospace' }}>{idr(vendorTotal)}</span>
+              </div>
+            )}
             <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', fontSize:14, fontWeight:700, color:C.dark, borderTop:`2px solid ${C.border}`, marginTop:4 }}>
               <span>Total Modal</span><span>{idr(total)}</span>
             </div>
