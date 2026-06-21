@@ -479,11 +479,15 @@ export default function SalesDashboard() {
 
       {/* Table */}
       <div style={s.card}>
+        <div style={{ display:'flex', justifyContent:'flex-end', marginBottom:10 }}>
+          <div style={{ fontSize:12, color:'#9ca3af' }}>{filteredRequests.length} total — scroll untuk lihat semua</div>
+        </div>
+        <div style={{ maxHeight:560, overflowY:'auto', border:`1px solid ${C.border}`, borderRadius:8 }}>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead>
             <tr>
               {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal','Sumber','Purchasing','Aksi'].map(h => (
-                <th key={h} style={s.th}>{h}</th>
+                <th key={h} style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
               ))}
             </tr>
           </thead>
@@ -640,6 +644,7 @@ export default function SalesDashboard() {
             })}
           </tbody>
         </table>
+        </div>
       </div>
     </Layout>
   )
