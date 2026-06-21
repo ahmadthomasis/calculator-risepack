@@ -29,6 +29,9 @@ export default function UserManagement() {
   const [confirmDelete, setConfirmDelete] = useState(null) // { id, name } | null
 
   const [form, setForm] = useState({ full_name:'', email:'', password:'', role:'sales' })
+  const [editingId, setEditingId] = useState(null) // id user yang sedang di-edit nama/email
+  const [editDraft, setEditDraft] = useState({ full_name:'', email:'' })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const showToast = (type, msg) => {
     setToast({ type, msg })
@@ -111,6 +114,34 @@ export default function UserManagement() {
     setConfirmDelete(null)
   }
 
+  const startEdit = (user) => {
+    setEditingId(user.id)
+    setEditDraft({ full_name: user.full_name || '', email: user.email || '' })
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null)
+    setEditDraft({ full_name:'', email:'' })
+  }
+
+  const saveEdit = async (userId) => {
+    const trimmedName = editDraft.full_name.trim()
+    const trimmedEmail = editDraft.email.trim()
+    if (!trimmedName) { showToast('error', 'Nama tidak boleh kosong'); return }
+    if (!trimmedEmail) { showToast('error', 'Email tidak boleh kosong'); return }
+
+    setSavingEdit(true)
+    try {
+      await callFunction('manage-user', { action:'update_profile', target_user_id:userId, full_name:trimmedName, email:trimmedEmail })
+      setUsers(prev => prev.map(u => u.id === userId ? { ...u, full_name:trimmedName, email:trimmedEmail } : u))
+      showToast('success', 'Profil user diperbarui')
+      cancelEdit()
+    } catch (e) {
+      showToast('error', e.message)
+    }
+    setSavingEdit(false)
+  }
+
   return (
     <Layout title="User Management">
       <div style={{ maxWidth:900, margin:'0 auto' }}>
@@ -191,10 +222,22 @@ export default function UserManagement() {
                 </tr>
               </thead>
               <tbody>
-                {users.map(u => (
+                {users.map(u => {
+                  const isEditing = editingId === u.id
+                  return (
                   <tr key={u.id}>
-                    <td style={s.td}>{u.full_name}</td>
-                    <td style={{ ...s.td, color:'#9ca3af' }}>{u.email}</td>
+                    <td style={s.td}>
+                      {isEditing ? (
+                        <input style={{ ...s.input, padding:'5px 8px', fontSize:13 }} value={editDraft.full_name}
+                          onChange={e => setEditDraft(d => ({ ...d, full_name:e.target.value }))} />
+                      ) : u.full_name}
+                    </td>
+                    <td style={{ ...s.td, color: isEditing ? C.dark : '#9ca3af' }}>
+                      {isEditing ? (
+                        <input style={{ ...s.input, padding:'5px 8px', fontSize:13 }} type="email" value={editDraft.email}
+                          onChange={e => setEditDraft(d => ({ ...d, email:e.target.value }))} />
+                      ) : u.email}
+                    </td>
                     <td style={s.td}>
                       <select
                         style={{ ...s.select, width:'auto', padding:'5px 8px', fontSize:12 }}
@@ -204,6 +247,7 @@ export default function UserManagement() {
                         <option value="sales">Sales</option>
                         <option value="estimator">Estimator</option>
                         <option value="manager">Manager</option>
+                        <option value="purchasing">Purchasing</option>
                       </select>
                     </td>
                     <td style={s.td}>
@@ -215,16 +259,29 @@ export default function UserManagement() {
                     </td>
                     <td style={{ ...s.td, textAlign:'right' }}>
                       <div style={{ display:'flex', gap:6, justifyContent:'flex-end' }}>
-                        <button style={s.btnGhost} onClick={() => handleToggleActive(u)}>
-                          {u.banned ? 'Aktifkan' : 'Nonaktifkan'}
-                        </button>
-                        <button style={s.btnDanger} onClick={() => setConfirmDelete({ id:u.id, name:u.full_name })}>
-                          Hapus
-                        </button>
+                        {isEditing ? (
+                          <>
+                            <button style={{ ...s.btnGhost, opacity: savingEdit ? 0.6 : 1 }} disabled={savingEdit} onClick={() => saveEdit(u.id)}>
+                              {savingEdit ? 'Menyimpan...' : 'Simpan'}
+                            </button>
+                            <button style={s.btnGhost} disabled={savingEdit} onClick={cancelEdit}>Batal</button>
+                          </>
+                        ) : (
+                          <>
+                            <button style={s.btnGhost} onClick={() => startEdit(u)}>Edit</button>
+                            <button style={s.btnGhost} onClick={() => handleToggleActive(u)}>
+                              {u.banned ? 'Aktifkan' : 'Nonaktifkan'}
+                            </button>
+                            <button style={s.btnDanger} onClick={() => setConfirmDelete({ id:u.id, name:u.full_name })}>
+                              Hapus
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           )}
