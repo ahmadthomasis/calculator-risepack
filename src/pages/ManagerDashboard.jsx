@@ -194,14 +194,14 @@ export default function ManagerDashboard() {
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>
-                    {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Purchasing','Tanggal'].map(h => (
+                    {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Sumber','Purchasing','Tanggal'].map(h => (
                       <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:12, color:'#9ca3af', fontWeight:500, borderBottom:'2px solid #f3f4f6', position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {quotations.length === 0 && (
-                    <tr><td colSpan={8} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Belum ada quotation</td></tr>
+                    <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Belum ada quotation</td></tr>
                 )}
                 {quotations.map(q => (
                   <tr key={q.id}>
@@ -228,6 +228,15 @@ export default function ManagerDashboard() {
                           <option value="followup">Followup 🔄</option>
                         </select>
                       </div>
+                    </td>
+                    <td style={{ padding:'10px' }}>
+                      {q.cost_source === 'vendor' ? (
+                        <span style={{ padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500, background:'#FAEEDA', color:'#633806' }} title={q.vendor_name || ''}>
+                          Vendor{q.vendor_name ? `: ${q.vendor_name}` : ''}
+                        </span>
+                      ) : (
+                        <span style={{ padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500, background:'#f1efe8', color:'#5f5e5a' }}>Internal</span>
+                      )}
                     </td>
                     <td style={{ padding:'10px' }}>
                       {!q.purchasing_status ? (
