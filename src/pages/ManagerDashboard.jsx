@@ -4,6 +4,15 @@ import Layout from '../components/Layout'
 
 const fmt = n => (n || 0).toLocaleString('id-ID')
 const idr = n => 'Rp ' + fmt(Math.round(n || 0))
+// Format ringkas untuk angka besar: 1.2Jt, 1.5M, dst.
+// Di bawah 1 juta tetap tampil apa adanya (tidak ada satuan yang pas untuk itu).
+const idrCompact = n => {
+  const v = Math.round(n || 0)
+  const abs = Math.abs(v)
+  if (abs >= 1_000_000_000) return 'Rp ' + (v / 1_000_000_000).toFixed(abs % 1_000_000_000 === 0 ? 0 : 1) + 'M'
+  if (abs >= 1_000_000) return 'Rp ' + (v / 1_000_000).toFixed(abs % 1_000_000 === 0 ? 0 : 1) + 'Jt'
+  return idr(v)
+}
 
 const DEAL_LABEL = { quoted:'Belum Diisi', deal:'Deal ✅', no_deal:'No Deal ❌', followup:'Followup 🔄' }
 const DEAL_COLOR = { quoted:'#9ca3af', deal:'#16a34a', no_deal:'#dc2626', followup:'#d97706' }
@@ -23,7 +32,10 @@ export default function ManagerDashboard() {
   const [requests,   setRequests]   = useState([])
   const [quotations, setQuotations] = useState([])
   const [loading,    setLoading]    = useState(true)
-  const [range,      setRange]      = useState('30')
+  const todayStr = new Date().toISOString().slice(0, 10)
+  const thirtyDaysAgoStr = (() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toISOString().slice(0, 10) })()
+  const [startDate,  setStartDate]  = useState(thirtyDaysAgoStr)
+  const [endDate,    setEndDate]    = useState(todayStr)
   const [lastSeen]   = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
 
   useEffect(() => {
@@ -31,7 +43,7 @@ export default function ManagerDashboard() {
     return () => clearTimeout(t)
   }, [])
 
-  useEffect(() => { loadData() }, [range])
+  useEffect(() => { loadData() }, [startDate, endDate])
 
   useEffect(() => {
     const channel = supabase
@@ -40,16 +52,21 @@ export default function ManagerDashboard() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'quotations' }, () => loadData())
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [range])
+  }, [startDate, endDate])
 
   async function loadData() {
     setLoading(true)
-    const since = new Date()
-    since.setDate(since.getDate() - parseInt(range))
+    // endDate inklusif sampai akhir hari (23:59:59), supaya request yang masuk
+    // di hari endDate ikut tercakup, bukan cuma sampai jam 00:00.
+    const endInclusive = new Date(endDate); endInclusive.setHours(23, 59, 59, 999)
+    const startInclusive = new Date(startDate); startInclusive.setHours(0, 0, 0, 0)
 
     const [{ data: reqs }, { data: quots }] = await Promise.all([
-      supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)').gte('submitted_at', since.toISOString()),
-      supabase.from('quotations').select('*, requests(customer_name, product_type, quantity, submitted_at)').gte('created_at', since.toISOString()).eq('is_active', true).eq('is_draft', false),
+      supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)')
+        .gte('submitted_at', startInclusive.toISOString()).lte('submitted_at', endInclusive.toISOString()),
+      supabase.from('quotations').select('*, requests(customer_name, product_type, quantity, submitted_at)')
+        .gte('created_at', startInclusive.toISOString()).lte('created_at', endInclusive.toISOString())
+        .eq('is_active', true).eq('is_draft', false),
     ])
     setRequests(reqs || [])
     setQuotations(quots || [])
@@ -64,9 +81,13 @@ export default function ManagerDashboard() {
   const dealCount   = quotations.filter(q => q.deal_status === 'deal').length
   const dealRate    = totalReq > 0 ? Math.round((dealCount / totalReq) * 100) : 0
   const totalNilai  = quotations.filter(q => q.deal_status === 'deal').reduce((s, q) => s + (q.selling_price || 0), 0)
-  const avgResponse = requests.filter(r => r.completed_at && r.submitted_at).reduce((sum, r) => {
-    return sum + (new Date(r.completed_at) - new Date(r.submitted_at)) / 3600000
-  }, 0) / (done || 1)
+  const completedReqs = requests.filter(r => r.completed_at && r.submitted_at)
+  const isSameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString()
+  const sameDayReqs   = completedReqs.filter(r => isSameDay(r.submitted_at, r.completed_at))
+  const crossDayReqs  = completedReqs.filter(r => !isSameDay(r.submitted_at, r.completed_at))
+  const avgHours = (list) => list.length === 0 ? 0 :
+    list.reduce((sum, r) => sum + (new Date(r.completed_at) - new Date(r.submitted_at)) / 3600000, 0) / list.length
+  const avgResponse = avgHours(completedReqs)
 
   // Breakdown by product type
   const byProduct = {}
@@ -91,14 +112,24 @@ export default function ManagerDashboard() {
           50% { opacity: 0.4; transform: scale(1.3); }
         }
       `}</style>
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:24, flexWrap:'wrap', gap:12 }}>
         <div style={{ fontSize:16, fontWeight:600, color:'#1a1a1a' }}>Ringkasan</div>
-        <select value={range} onChange={e => setRange(e.target.value)}
-          style={{ padding:'7px 12px', border:'1px solid #d1d5db', borderRadius:8, fontSize:13, background:'#fff' }}>
-          <option value="7">7 hari terakhir</option>
-          <option value="30">30 hari terakhir</option>
-          <option value="90">90 hari terakhir</option>
-        </select>
+        <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+          {[[7,'7 hari'],[30,'30 hari'],[90,'90 hari']].map(([days, label]) => (
+            <button key={days} onClick={() => {
+              const e = new Date(); const s = new Date(); s.setDate(s.getDate() - days)
+              setStartDate(s.toISOString().slice(0,10)); setEndDate(e.toISOString().slice(0,10))
+            }} style={{ padding:'6px 12px', border:'1px solid #d1d5db', borderRadius:7, fontSize:12, background:'#fff', color:'#6b7280', cursor:'pointer' }}>
+              {label}
+            </button>
+          ))}
+          <span style={{ color:'#d1d5db' }}>|</span>
+          <input type="date" value={startDate} max={endDate} onChange={e => setStartDate(e.target.value)}
+            style={{ padding:'6px 10px', border:'1px solid #d1d5db', borderRadius:7, fontSize:13, background:'#fff' }} />
+          <span style={{ fontSize:13, color:'#9ca3af' }}>—</span>
+          <input type="date" value={endDate} min={startDate} max={todayStr} onChange={e => setEndDate(e.target.value)}
+            style={{ padding:'6px 10px', border:'1px solid #d1d5db', borderRadius:7, fontSize:13, background:'#fff' }} />
+        </div>
       </div>
 
       {loading ? (
@@ -112,8 +143,9 @@ export default function ManagerDashboard() {
             <StatCard label="Dikerjakan" value={inProgress} color="#2563eb" />
             <StatCard label="Selesai" value={done} color="#16a34a" />
             <StatCard label="Deal Rate" value={`${dealRate}%`} color="#7c3aed" sub={`${dealCount} dari ${totalReq}`} />
-            <StatCard label="Nilai Deal" value={idr(totalNilai)} color="#16a34a" />
-            <StatCard label="Avg Response" value={`${avgResponse.toFixed(1)}j`} color="#374151" sub="waktu estimasi" />
+            <StatCard label="Nilai Deal" value={idrCompact(totalNilai)} color="#16a34a" sub={idr(totalNilai)} />
+            <StatCard label="Avg Response" value={`${avgResponse.toFixed(1)}j`} color="#374151"
+              sub={`${sameDayReqs.length} same-day, ${crossDayReqs.length} lintas hari`} />
           </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
@@ -154,20 +186,24 @@ export default function ManagerDashboard() {
 
           {/* Recent quotations */}
           <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-            <div style={{ fontSize:14, fontWeight:600, marginBottom:16 }}>Quotation Terbaru</div>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead>
-                <tr>
-                  {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Purchasing','Tanggal'].map(h => (
-                    <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:12, color:'#9ca3af', fontWeight:500, borderBottom:'2px solid #f3f4f6' }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {quotations.length === 0 && (
-                  <tr><td colSpan={8} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Belum ada quotation</td></tr>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:16 }}>
+              <div style={{ fontSize:14, fontWeight:600 }}>Quotation Terbaru</div>
+              <div style={{ fontSize:12, color:'#9ca3af' }}>{quotations.length} total — scroll untuk lihat semua</div>
+            </div>
+            <div style={{ maxHeight:520, overflowY:'auto', border:'1px solid #f3f4f6', borderRadius:8 }}>
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Purchasing','Tanggal'].map(h => (
+                      <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:12, color:'#9ca3af', fontWeight:500, borderBottom:'2px solid #f3f4f6', position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {quotations.length === 0 && (
+                    <tr><td colSpan={8} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Belum ada quotation</td></tr>
                 )}
-                {quotations.slice(0, 20).map(q => (
+                {quotations.map(q => (
                   <tr key={q.id}>
                     <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.customer_name}</td>
                     <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.product_type}</td>
@@ -224,7 +260,8 @@ export default function ManagerDashboard() {
                   </tr>
                 ))}
               </tbody>
-            </table>
+              </table>
+            </div>
           </div>
         </>
       )}
