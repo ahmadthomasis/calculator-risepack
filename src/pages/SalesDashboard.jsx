@@ -99,7 +99,7 @@ export default function SalesDashboard() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, purchasing_status, purchasing_notes, cost_source, vendor_name)')
+      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name)')
       .order('submitted_at', { ascending: false })
     setRequests(data || [])
   }
@@ -497,7 +497,7 @@ export default function SalesDashboard() {
               const qtys = Array.isArray(r.quantities) && r.quantities.length > 0
                 ? r.quantities
                 : (r.quantity ? [r.quantity] : [])
-              const quotationsList = (Array.isArray(r.quotations) ? r.quotations : []).filter(q => !q.is_draft)
+              const quotationsList = (Array.isArray(r.quotations) ? r.quotations : []).filter(q => !q.is_draft && q.is_active)
               // cocokkan tiap qty dengan quotation yang quantity-nya sama persis
               const rows = qtys.map(qty => ({
                 qty,
