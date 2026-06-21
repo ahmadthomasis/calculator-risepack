@@ -57,7 +57,7 @@ export default function EstimatorQueue() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, purchasing_status, purchasing_notes)')
+      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, purchasing_status, purchasing_notes, cost_source, vendor_name)')
       .order('priority', { ascending: false })
       .order('submitted_at', { ascending: true })
     setRequests(data || [])
@@ -136,13 +136,14 @@ export default function EstimatorQueue() {
               <th style={s.th}>Waktu</th>
               <th style={s.th}>Status</th>
               <th style={s.th}>Status Deal</th>
+              <th style={s.th}>Sumber</th>
               <th style={s.th}>Purchasing</th>
               <th style={s.th}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={10} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
+              <tr><td colSpan={11} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
                 Tidak ada request
               </td></tr>
             )}
@@ -212,6 +213,20 @@ export default function EstimatorQueue() {
                         <span style={s.badge(DEAL_COLOR[q.deal_status])}>{DEAL_LABEL[q.deal_status]}</span>
                       </div>
                     )
+                  })()}
+                </td>
+                <td style={s.td}>
+                  {(() => {
+                    const q = (r.quotations || []).filter(qt => !qt.is_draft)[0]
+                    if (!q) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
+                    if (q.cost_source === 'vendor') {
+                      return (
+                        <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:600, background:'#FAEEDA', color:'#854F0B' }} title={q.vendor_name || ''}>
+                          Vendor{q.vendor_name ? `: ${q.vendor_name}` : ''}
+                        </span>
+                      )
+                    }
+                    return <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:600, background:'#f1efe8', color:'#5f5e5a' }}>Internal</span>
                   })()}
                 </td>
                 <td style={s.td}>
