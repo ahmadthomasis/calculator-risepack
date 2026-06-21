@@ -99,7 +99,7 @@ export default function SalesDashboard() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, purchasing_status, purchasing_notes)')
+      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, purchasing_status, purchasing_notes, cost_source, vendor_name)')
       .order('submitted_at', { ascending: false })
     setRequests(data || [])
   }
@@ -482,14 +482,14 @@ export default function SalesDashboard() {
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead>
             <tr>
-              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal','Purchasing','Aksi'].map(h => (
+              {['No. Request','Customer','Produk','Qty','Status','Prioritas','Tanggal','Harga','Status Deal','Sumber','Purchasing','Aksi'].map(h => (
                 <th key={h} style={s.th}>{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filteredRequests.length === 0 && (
-              <tr><td colSpan={11} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
+              <tr><td colSpan={12} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:32 }}>
                 {requests.length === 0 ? 'Belum ada request. Klik "+ Request Harga Baru" untuk mulai.' : 'Tidak ada customer yang cocok dengan pencarian.'}
               </td></tr>
             )}
@@ -580,6 +580,28 @@ export default function SalesDashboard() {
                               <option value="no_deal">No Deal ❌</option>
                               <option value="followup">Followup 🔄</option>
                             </select>
+                          </div>
+                        ) : null)}
+                      </div>
+                    ) : <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>}
+                  </td>
+                  <td style={s.td}>
+                    {rows.some(row => row.q) ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                        {rows.map((row, i) => row.q ? (
+                          <div key={i}>
+                            {rows.length > 1 && (
+                              <span style={{ fontSize:10, color:'#9ca3af', marginRight:4 }}>
+                                {row.qty.toLocaleString('id-ID')}:
+                              </span>
+                            )}
+                            {row.q.cost_source === 'vendor' ? (
+                              <span style={{ padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500, background:'#FAEEDA', color:'#633806' }} title={row.q.vendor_name || ''}>
+                                Vendor{row.q.vendor_name ? `: ${row.q.vendor_name}` : ''}
+                              </span>
+                            ) : (
+                              <span style={{ padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500, background:'#f1efe8', color:'#5f5e5a' }}>Internal</span>
+                            )}
                           </div>
                         ) : null)}
                       </div>
