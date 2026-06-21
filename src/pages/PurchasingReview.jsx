@@ -190,53 +190,7 @@ export default function PurchasingReview() {
         )}
       </div>
 
-      {quotation.cost_source === 'vendor' ? (
-        <div>
-          <div style={{ fontSize:13, fontWeight:500, color:C.dark, margin:'0 0 8px' }}>Perbandingan Modal Vendor</div>
-          <div style={s.card}>
-            <table style={{ width:'100%', borderCollapse:'collapse' }}>
-              <thead>
-                <tr>
-                  <th style={s.th}>Item</th>
-                  <th style={s.thNum}>Modal Vendor{quotation.vendor_name ? ` (${quotation.vendor_name})` : ''}</th>
-                  <th style={s.thNum}>Harga Pembanding Purchasing</th>
-                  <th style={s.thNum}>Selisih</th>
-                </tr>
-              </thead>
-              <tbody>
-                {(() => {
-                  const estimatorPrice = Number(quotation.vendor_price_per_pcs) || 0
-                  const key = 'vendor_total-0'
-                  const comp = comparisons[key] || {}
-                  const purchasingPrice = comp.purchasing_price
-                  const diffPct = (purchasingPrice != null && estimatorPrice > 0)
-                    ? Math.round(((purchasingPrice - estimatorPrice) / estimatorPrice) * 100)
-                    : null
-                  return (
-                    <tr>
-                      <td style={s.td}>Total modal (per pcs)</td>
-                      <td style={s.tdNum}>Rp {fmt(estimatorPrice)}</td>
-                      <td style={s.tdNum}>
-                        <input
-                          type="number"
-                          style={s.input}
-                          placeholder="belum diisi"
-                          value={purchasingPrice ?? ''}
-                          onChange={e => updateComparisonPrice('vendor_total', 0, e.target.value, estimatorPrice, 'Total modal (per pcs)')}
-                        />
-                      </td>
-                      <td style={{ ...s.tdNum, fontWeight:500, color: diffPct == null ? '#c4c4c4' : diffPct > 0 ? '#A32D2D' : diffPct < 0 ? '#3b6d11' : C.dark }}>
-                        {diffPct == null ? '—' : `${diffPct > 0 ? '+' : ''}${diffPct}%`}
-                      </td>
-                    </tr>
-                  )
-                })()}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : (
-        SECTIONS.map(sec => {
+      {SECTIONS.map(sec => {
         const rows = quotation[sec.key]
         if (!Array.isArray(rows) || rows.length === 0) return null
         return (
@@ -292,7 +246,56 @@ export default function PurchasingReview() {
             </div>
           </div>
         )
-      }))}
+      })}
+
+      {/* Perbandingan Harga Vendor — TAMBAHAN, muncul di samping 6 section di atas,
+          bukan menggantikannya. Estimator tetap wajib isi 6 section secara manual. */}
+      {quotation.cost_source === 'vendor' && (
+        <div>
+          <div style={{ fontSize:13, fontWeight:500, color:C.dark, margin:'0 0 8px' }}>Perbandingan Harga Vendor</div>
+          <div style={s.card}>
+            <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={s.th}>Item</th>
+                  <th style={s.thNum}>Harga Vendor{quotation.vendor_name ? ` (${quotation.vendor_name})` : ''}</th>
+                  <th style={s.thNum}>Harga Pembanding Purchasing</th>
+                  <th style={s.thNum}>Selisih</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(() => {
+                  const estimatorPrice = Number(quotation.vendor_price_per_pcs) || 0
+                  const key = 'vendor_total-0'
+                  const comp = comparisons[key] || {}
+                  const purchasingPrice = comp.purchasing_price
+                  const diffPct = (purchasingPrice != null && estimatorPrice > 0)
+                    ? Math.round(((purchasingPrice - estimatorPrice) / estimatorPrice) * 100)
+                    : null
+                  return (
+                    <tr>
+                      <td style={s.td}>Harga vendor (per pcs)</td>
+                      <td style={s.tdNum}>Rp {fmt(estimatorPrice)}</td>
+                      <td style={s.tdNum}>
+                        <input
+                          type="number"
+                          style={s.input}
+                          placeholder="belum diisi"
+                          value={purchasingPrice ?? ''}
+                          onChange={e => updateComparisonPrice('vendor_total', 0, e.target.value, estimatorPrice, 'Harga vendor (per pcs)')}
+                        />
+                      </td>
+                      <td style={{ ...s.tdNum, fontWeight:500, color: diffPct == null ? '#c4c4c4' : diffPct > 0 ? '#A32D2D' : diffPct < 0 ? '#3b6d11' : C.dark }}>
+                        {diffPct == null ? '—' : `${diffPct > 0 ? '+' : ''}${diffPct}%`}
+                      </td>
+                    </tr>
+                  )
+                })()}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
 
       {!hasAtLeastOnePrice && (
         <div style={{ background:'#fffbeb', border:'0.5px solid #f3d98a', borderRadius:8, padding:'10px 14px', fontSize:12, color:'#92400e', marginBottom:18 }}>
