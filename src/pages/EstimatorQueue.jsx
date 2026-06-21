@@ -57,7 +57,7 @@ export default function EstimatorQueue() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, purchasing_status, purchasing_notes, cost_source, vendor_name)')
+      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name)')
       .order('priority', { ascending: false })
       .order('submitted_at', { ascending: true })
     setRequests(data || [])
@@ -199,7 +199,7 @@ export default function EstimatorQueue() {
                 <td style={s.td}><span style={s.badge(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</span></td>
                 <td style={s.td}>
                   {(() => {
-                    const q = (r.quotations || []).filter(qt => !qt.is_draft)[0]
+                    const q = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
                     if (!q || !q.deal_status) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     const isNew = q.deal_status !== 'quoted' && q.updated_at && new Date(q.updated_at) > new Date(lastSeen)
                     return (
@@ -217,7 +217,7 @@ export default function EstimatorQueue() {
                 </td>
                 <td style={s.td}>
                   {(() => {
-                    const q = (r.quotations || []).filter(qt => !qt.is_draft)[0]
+                    const q = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
                     if (!q) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     if (q.cost_source === 'vendor') {
                       return (
@@ -231,7 +231,7 @@ export default function EstimatorQueue() {
                 </td>
                 <td style={s.td}>
                   {(() => {
-                    const q = (r.quotations || []).filter(qt => !qt.is_draft)[0]
+                    const q = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
                     if (!q || !q.purchasing_status) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     const labels = { pending:'Menunggu', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
                     const colors = { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }
