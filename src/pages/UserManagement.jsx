@@ -32,6 +32,9 @@ export default function UserManagement() {
   const [editingId, setEditingId] = useState(null) // id user yang sedang di-edit nama/email
   const [editDraft, setEditDraft] = useState({ full_name:'', email:'' })
   const [savingEdit, setSavingEdit] = useState(false)
+  const [resetTarget, setResetTarget] = useState(null) // { id, name } | null
+  const [resetForm, setResetForm] = useState({ password:'', confirm:'' })
+  const [resetting, setResetting] = useState(false)
 
   const showToast = (type, msg) => {
     setToast({ type, msg })
@@ -140,6 +143,27 @@ export default function UserManagement() {
       showToast('error', e.message)
     }
     setSavingEdit(false)
+  }
+
+  const startReset = (user) => {
+    setResetTarget({ id: user.id, name: user.full_name })
+    setResetForm({ password:'', confirm:'' })
+  }
+
+  const handleResetPassword = async () => {
+    if (!resetTarget) return
+    if (resetForm.password.length < 6) { showToast('error', 'Password minimal 6 karakter'); return }
+    if (resetForm.password !== resetForm.confirm) { showToast('error', 'Konfirmasi password tidak cocok'); return }
+
+    setResetting(true)
+    try {
+      await callFunction('manage-user', { action:'reset_password', target_user_id:resetTarget.id, password:resetForm.password })
+      showToast('success', `Password ${resetTarget.name} berhasil direset`)
+      setResetTarget(null)
+    } catch (e) {
+      showToast('error', e.message)
+    }
+    setResetting(false)
   }
 
   return (
@@ -269,6 +293,7 @@ export default function UserManagement() {
                         ) : (
                           <>
                             <button style={s.btnGhost} onClick={() => startEdit(u)}>Edit</button>
+                            <button style={s.btnGhost} onClick={() => startReset(u)}>Reset Password</button>
                             <button style={s.btnGhost} onClick={() => handleToggleActive(u)}>
                               {u.banned ? 'Aktifkan' : 'Nonaktifkan'}
                             </button>
@@ -306,6 +331,40 @@ export default function UserManagement() {
                 onClick={handleDelete}
               >
                 Ya, Hapus Permanen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resetTarget && (
+        <div style={{
+          position:'fixed', inset:0, background:'rgba(44,24,16,0.5)',
+          display:'flex', alignItems:'center', justifyContent:'center', zIndex:50,
+        }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:28, maxWidth:380, width:'90%' }}>
+            <h3 style={{ fontSize:16, fontWeight:700, color:C.dark, marginBottom:10 }}>Reset Password</h3>
+            <p style={{ fontSize:13, color:'#6b7280', lineHeight:1.6, marginBottom:16 }}>
+              Atur ulang password untuk <b>{resetTarget.name}</b>. User perlu pakai password baru ini saat login berikutnya.
+            </p>
+            <div style={{ marginBottom:12 }}>
+              <label style={s.label}>Password Baru</label>
+              <input style={s.input} type="password" minLength={6} value={resetForm.password}
+                onChange={e => setResetForm(f => ({ ...f, password:e.target.value }))} placeholder="Min. 6 karakter" />
+            </div>
+            <div style={{ marginBottom:20 }}>
+              <label style={s.label}>Konfirmasi Password</label>
+              <input style={s.input} type="password" minLength={6} value={resetForm.confirm}
+                onChange={e => setResetForm(f => ({ ...f, confirm:e.target.value }))} placeholder="Ulangi password baru" />
+            </div>
+            <div style={{ display:'flex', gap:10, justifyContent:'flex-end' }}>
+              <button style={s.btnGhost} disabled={resetting} onClick={() => setResetTarget(null)}>Batal</button>
+              <button
+                style={{ ...s.btn, opacity: resetting ? 0.6 : 1, padding:'8px 16px' }}
+                disabled={resetting}
+                onClick={handleResetPassword}
+              >
+                {resetting ? 'Menyimpan...' : 'Reset Password'}
               </button>
             </div>
           </div>
