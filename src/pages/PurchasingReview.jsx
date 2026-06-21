@@ -6,14 +6,21 @@ import Layout from '../components/Layout'
 
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
 
+// 'key' = nama kolom di tabel quotations (dipakai untuk akses data & sebagai bagian
+// composite key React, TIDAK diubah supaya tidak merusak logic lain).
+// 'dbSection' = nilai pendek sesuai CHECK constraint kolom `section` di tabel
+// purchasing_comparisons (lihat migration_purchasing.sql) — keduanya BEDA sengaja,
+// jangan disamakan, karena constraint-nya memang didefinisikan dengan nilai pendek.
 const SECTIONS = [
-  { key:'material_cost',     label:'1. Material Cost',  priceField:'harga_per_pcs',    nameFn:r => r.material || r.nama || '—' },
-  { key:'cetak_cost',        label:'2. Cetak Cost',     priceField:'harga_per_lembar', nameFn:r => `${r.mesin || ''} ${r.warna || ''}`.trim() || '—' },
-  { key:'emboss_laminasi',   label:'3. Emboss / Laminasi', priceField:'harga_per_cm2', nameFn:r => r.proses || '—' },
-  { key:'material_proses',   label:'4. Material Proses', priceField:'harga_satuan',   nameFn:r => r.proses || '—' },
-  { key:'finishing_wo',      label:'5. Finishing WO',   priceField:'harga_satuan',     nameFn:r => r.proses || '—' },
-  { key:'additional_cost',   label:'6. Additional Cost', priceField:'harga',          nameFn:r => r.proses || '—' },
+  { key:'material_cost',     dbSection:'material',   label:'1. Material Cost',  priceField:'harga_per_pcs',    nameFn:r => r.material || r.nama || '—' },
+  { key:'cetak_cost',        dbSection:'cetak',       label:'2. Cetak Cost',     priceField:'harga_per_lembar', nameFn:r => `${r.mesin || ''} ${r.warna || ''}`.trim() || '—' },
+  { key:'emboss_laminasi',   dbSection:'emboss',      label:'3. Emboss / Laminasi', priceField:'harga_per_cm2', nameFn:r => r.proses || '—' },
+  { key:'material_proses',   dbSection:'mat_proses',  label:'4. Material Proses', priceField:'harga_satuan',   nameFn:r => r.proses || '—' },
+  { key:'finishing_wo',      dbSection:'finishing',   label:'5. Finishing WO',   priceField:'harga_satuan',     nameFn:r => r.proses || '—' },
+  { key:'additional_cost',   dbSection:'additional',  label:'6. Additional Cost', priceField:'harga',          nameFn:r => r.keterangan ? `${r.proses || '—'} — ${r.keterangan}` : (r.proses || '—') },
 ]
+// Lookup cepat key -> dbSection, dipakai saat insert ke purchasing_comparisons
+const SECTION_DB_MAP = Object.fromEntries(SECTIONS.map(s => [s.key, s.dbSection]))
 
 // Format angka konsisten: bulatkan, pakai pemisah ribuan gaya Indonesia, tanpa desimal
 // (harga di app ini selalu dalam Rupiah utuh, desimal kecil di data lama hanya artefak
@@ -51,7 +58,14 @@ export default function PurchasingReview() {
     const { data: comps } = await supabase.from('purchasing_comparisons').select('*').eq('quotation_id', quotationId)
 
     const compMap = {}
-    ;(comps || []).forEach(c => { compMap[`${c.section}-${c.row_index}`] = c })
+    // c.section dari DB berisi nilai pendek (mis. 'material'), perlu di-translate
+    // balik ke key kolom quotations (mis. 'material_cost') supaya cocok dengan
+    // key yang dipakai render tabel & state lain.
+    const dbToKeyMap = Object.fromEntries(SECTIONS.map(s => [s.dbSection, s.key]))
+    ;(comps || []).forEach(c => {
+      const sectionKey = dbToKeyMap[c.section] || c.section
+      compMap[`${sectionKey}-${c.row_index}`] = c
+    })
 
     setQuotation(q)
     setRequest(req)
@@ -81,10 +95,14 @@ export default function PurchasingReview() {
     const rows = Object.entries(comparisons)
       .filter(([, c]) => c.purchasing_price != null && c.purchasing_price !== '')
       .map(([key, c]) => {
-        const [section, rowIndexStr] = key.split('-')
+        // Pisahkan row_index dari akhir key (lebih aman daripada split('-') biasa,
+        // berjaga-jaga kalau suatu saat ada nama section yang mengandung dash).
+        const lastDash = key.lastIndexOf('-')
+        const sectionKey = key.slice(0, lastDash)
+        const rowIndexStr = key.slice(lastDash + 1)
         return {
           quotation_id: quotationId,
-          section,
+          section: SECTION_DB_MAP[sectionKey] || sectionKey,
           row_index: Number(rowIndexStr),
           item_name: c.item_name || null,
           estimator_price: c.estimator_price ?? null,
@@ -92,17 +110,22 @@ export default function PurchasingReview() {
           updated_at: new Date().toISOString(),
         }
       })
-    if (rows.length === 0) return
+    if (rows.length === 0) return true
     await supabase.from('purchasing_comparisons').delete().eq('quotation_id', quotationId)
     const { error } = await supabase.from('purchasing_comparisons').insert(rows)
-    if (error) console.error('Gagal simpan comparisons:', error)
+    if (error) {
+      console.error('Gagal simpan comparisons:', error)
+      alert('Gagal menyimpan harga pembanding: ' + error.message)
+      return false
+    }
+    return true
   }
 
   async function decide(status) {
     if (!hasAtLeastOnePrice || !profile) return
-    if (!confirm(`Yakin set status quotation ini jadi "${status}"?`)) return
     setSaving(true)
-    await saveComparisons()
+    const saved = await saveComparisons()
+    if (!saved) { setSaving(false); return }
     const { error } = await supabase.from('quotations').update({
       purchasing_status: status,
       purchasing_notes: notes || null,
@@ -110,7 +133,7 @@ export default function PurchasingReview() {
       purchasing_reviewed_by: profile.id,
     }).eq('id', quotationId)
     setSaving(false)
-    if (error) { console.error('Gagal update status purchasing:', error); return }
+    if (error) { console.error('Gagal update status purchasing:', error); alert('Gagal menyimpan keputusan: ' + error.message); return }
     navigate('/purchasing')
   }
 
@@ -131,11 +154,15 @@ export default function PurchasingReview() {
       </button>
 
       <div style={{ ...s.card, borderLeft:`4px solid ${C.orange}`, padding:'14px 18px', marginBottom:18 }}>
-        <div style={{ display:'grid', gridTemplateColumns:'repeat(6, 1fr)', gap:10, fontSize:13 }}>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:10, fontSize:13 }}>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Customer</div><div style={{ fontWeight:500 }}>{quotation.customer_name}</div></div>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Produk</div><div style={{ fontWeight:500 }}>{quotation.product_type}</div></div>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Qty</div><div style={{ fontWeight:500 }}>{fmt(quotation.quantity)}</div></div>
-          <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Harga Estimator</div><div style={{ fontWeight:500 }}>Rp {fmt(quotation.selling_price)}</div></div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Harga Estimator</div>
+            <div style={{ fontWeight:500 }}>Rp {fmt(quotation.selling_price)}</div>
+            <div style={{ fontSize:11, color:'#9ca3af' }}>≈ Rp {fmt(quotation.price_per_unit)} /pcs</div>
+          </div>
           <div>
             <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Selisih harga satuan terisi</div>
             <div style={{ fontWeight:500, color: !hasAtLeastOnePrice ? '#9ca3af' : totalDiff > 0 ? '#A32D2D' : totalDiff < 0 ? '#3b6d11' : C.dark }}>
