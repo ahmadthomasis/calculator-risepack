@@ -205,6 +205,7 @@ export default function UserManagement() {
                   <option value="sales">Sales</option>
                   <option value="estimator">Estimator</option>
                   <option value="manager">Manager</option>
+                  <option value="purchasing">Purchasing</option>
                 </select>
               </div>
               <div>
