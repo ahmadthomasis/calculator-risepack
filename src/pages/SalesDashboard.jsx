@@ -218,11 +218,9 @@ export default function SalesDashboard() {
       updated_at:     new Date().toISOString(),
     }
 
-    const { data: updData, error, count, status } = editingId
+    const { data: updData, error } = editingId
       ? await supabase.from('requests').update(payload).eq('id', editingId).select()
-      : { data: null, error: null, count: null, status: null }
-
-    console.log('[DEBUG handleSubmit] editingId:', editingId, '| error:', error, '| finishing_spec:', payload.finishing_spec, '| updData:', updData, '| count:', count, '| status:', status)
+      : { data: null, error: null }
 
     if (!editingId) {
       const { error: insertErr } = await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
