@@ -64,7 +64,13 @@ export default function EstimatorQueue() {
   }
 
   async function startRequest(id) {
-    await supabase.from('requests').update({ status:'in_progress', started_at: new Date().toISOString() }).eq('id', id)
+    await supabase.from('requests').update({
+      status: 'in_progress',
+      started_at: new Date().toISOString(),
+      // Reset spec_updated_at supaya badge "Ada Revisi" hilang --
+      // estimator sudah acknowledge revisi dengan mulai kerjakan ulang.
+      spec_updated_at: null,
+    }).eq('id', id)
     navigate(`/calculator/${id}`)
   }
 
@@ -204,12 +210,16 @@ export default function EstimatorQueue() {
                   <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
                     <span style={s.badge(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</span>
                     {(() => {
-                      // Badge "Ada Revisi": muncul kalau request diupdate SETELAH
-                      // estimator mulai kerjakan (updated_at > started_at).
-                      // Ini menandai bahwa spesifikasi berubah sejak estimator mulai.
-                      if (!r.started_at || !r.updated_at) return null
-                      const hasRevision = new Date(r.updated_at) > new Date(r.started_at)
-                      if (!hasRevision) return null
+                      // Badge "Ada Revisi": muncul hanya kalau:
+                      // 1. Status 'done' (selesai) -- kalau masih dikerjakan tidak perlu
+                      // 2. spec_updated_at ada (sales/manager mengubah spesifikasi)
+                      // 3. spec_updated_at > completed_at (revisi terjadi SETELAH estimator selesai)
+                      //    atau completed_at null tapi spec_updated_at ada
+                      if (r.status !== 'done') return null
+                      if (!r.spec_updated_at) return null
+                      const revisiSetelahSelesai = !r.completed_at ||
+                        new Date(r.spec_updated_at) > new Date(r.completed_at)
+                      if (!revisiSetelahSelesai) return null
                       return (
                         <span style={{
                           padding:'2px 8px', borderRadius:12, fontSize:10, fontWeight:600,
