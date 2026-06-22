@@ -215,13 +215,14 @@ export default function SalesDashboard() {
       reference_images: form.image_urls,
       reference_image: form.image_urls[0] || '',
       plano_size:     form.luas_permukaan,
+      updated_at:     new Date().toISOString(),
     }
 
-    const { error } = editingId
-      ? await supabase.from('requests').update(payload).eq('id', editingId)
-      : { error: null }
+    const { data: updData, error, count, status } = editingId
+      ? await supabase.from('requests').update(payload).eq('id', editingId).select()
+      : { data: null, error: null, count: null, status: null }
 
-    console.log('[DEBUG handleSubmit] editingId:', editingId, '| error:', error, '| finishing_spec:', payload.finishing_spec)
+    console.log('[DEBUG handleSubmit] editingId:', editingId, '| error:', error, '| finishing_spec:', payload.finishing_spec, '| updData:', updData, '| count:', count, '| status:', status)
 
     if (!editingId) {
       const { error: insertErr } = await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
