@@ -510,7 +510,7 @@ export default function Calculator() {
       request_id: requestId, estimator_id: profile.id,
       customer_name: request.customer_name, product_type: request.product_type, quantity: activeQty,
       material_cost: matCalc, cetak_cost: cetakCalc, emboss_laminasi: embCalc,
-      material_proses: mpCalc, finishing_wo: finCalc, additional_cost: additional,
+      material_proses: mpCalc, finishing_wo: finCalc, additional_cost: addCalc,
       subtotal_material: sub.material, subtotal_cetak: sub.cetak, subtotal_emboss: sub.emboss,
       subtotal_matproses: sub.matProses, subtotal_finishing: sub.finishing, subtotal_additional: sub.additional,
       total_cost: total, margin_percent: num(margin),
@@ -1040,5 +1040,6 @@ export default function Calculator() {
     </Layout>
   )
 }
+
 
 
