@@ -17,11 +17,21 @@ const DB_TO_KEY_MAP = Object.fromEntries(Object.entries(SECTION_DB_MAP).map(([k,
 const fmt = n => Math.round(Number(n) || 0).toLocaleString('id-ID')
 const idr = n => 'Rp ' + fmt(n)
 
-// ── Definisi kolom per section (tampil persis seperti di Calculator) ────────
-// 'key'   = nama field di dalam array data row (mis. r.material, r.gsm, ...)
-// 'label' = header kolom
-// 'align' = 'left' | 'right' | 'center'
-// 'render'= fungsi render nilai dari row
+// ── Definisi kolom per section ────────────────────────────────────────────
+// Nama field (r.xxx) HARUS cocok dengan yang tersimpan di database,
+// bukan nama kolom tabel. Sumber kebenaran: fungsi new*() di Calculator.jsx.
+// Material  : id, nama, material, gsm, plano, plano_w, plano_h, harga_kg,
+//             luas_permukaan, mata, plano_get, insheet, quantity,
+//             harga_lembar, harga_per_pcs, subtotal
+// Cetak     : id, nama, mesin, warna, quantity, luas_permukaan, insheet,
+//             harga_per_lembar, subtotal
+// Emboss    : id, nama, proses, quantity, luas_permukaan, insheet,
+//             harga_per_cm2, subtotal
+// Mat Proses: id, nama, proses, harga_satuan, quantity, luas_permukaan,
+//             subtotal
+// Finishing : id, nama, proses, spesifik, harga_satuan, subtotal
+// Additional: id, nama, proses, keterangan, luas_permukaan, gramasi,
+//             panjang_lem, quantity, harga, subtotal
 const SECTION_COLS = {
   material_cost: [
     { label:'Nama',         align:'left',   render: r => r.nama || '—' },
@@ -29,48 +39,45 @@ const SECTION_COLS = {
     { label:'GSM',          align:'center', render: r => r.gsm || '—' },
     { label:'Plano',        align:'center', render: r => r.plano || '—' },
     { label:'Luas Perm.',   align:'center', render: r => r.luas_permukaan || '—' },
-    { label:'Mata',         align:'center', render: r => r.mata || '—' },
+    { label:'Mata',         align:'center', render: r => r.mata ?? '—' },
     { label:'Plano Get',    align:'center', render: r => r.plano_get || '—' },
     { label:'Qty',          align:'right',  render: r => fmt(r.quantity) },
     { label:'Insheet',      align:'right',  render: r => fmt(r.insheet) },
-    { label:'Harga/Lembar', align:'right',  render: r => idr(r.harga_per_lembar) },
-    { label:'Harga/pcs',    align:'right',  render: r => idr(r.harga_per_pcs), isPrice: true },
+    { label:'Harga/Lembar', align:'right',  render: r => idr(r.harga_lembar) },
+    { label:'Harga/pcs',    align:'right',  render: r => idr(r.harga_per_pcs), priceField:'harga_per_pcs' },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal',     align:'right',  render: r => idr(r.subtotal) },
   ],
   cetak_cost: [
-    { label:'Nama',          align:'left',   render: r => r.nama || '—' },
-    { label:'Mesin',         align:'center', render: r => r.mesin || '—' },
-    { label:'Warna',         align:'center', render: r => r.warna || '—' },
-    { label:'Qty',           align:'right',  render: r => fmt(r.quantity) },
-    { label:'Insheet',       align:'right',  render: r => fmt(r.insheet) },
-    { label:'Luas Perm.',    align:'center', render: r => r.luas_permukaan || '—' },
-    { label:'Harga/pcs',     align:'right',  render: r => idr(r.harga_per_lembar), isPrice: true },
-    { label:'Diskon%',       align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
-    { label:'Subtotal (×qty)',align:'right', render: r => idr(r.subtotal) },
+    { label:'Nama',           align:'left',   render: r => r.nama || '—' },
+    { label:'Mesin',          align:'center', render: r => r.mesin || '—' },
+    { label:'Warna',          align:'center', render: r => r.warna || '—' },
+    { label:'Qty',            align:'right',  render: r => fmt(r.quantity) },
+    { label:'Insheet',        align:'right',  render: r => fmt(r.insheet) },
+    { label:'Luas Perm.',     align:'center', render: r => r.luas_permukaan || '—' },
+    { label:'Harga/Lembar',   align:'right',  render: r => idr(r.harga_per_lembar), priceField:'harga_per_lembar' },
+    { label:'Diskon%',        align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
+    { label:'Subtotal (×qty)',align:'right',  render: r => idr(r.subtotal) },
   ],
   emboss_laminasi: [
     { label:'Proses',       align:'left',   render: r => r.proses || '—' },
-    { label:'Spesifik',     align:'left',   render: r => r.spesifik || '—' },
     { label:'Luas Perm.',   align:'center', render: r => r.luas_permukaan || '—' },
     { label:'Qty',          align:'right',  render: r => fmt(r.quantity) },
-    { label:'Harga/cm²',   align:'right',  render: r => `Rp ${(r.harga_per_cm2 || 0).toLocaleString('id-ID', { minimumFractionDigits:2, maximumFractionDigits:4 })}`, isPrice: true },
+    { label:'Harga/cm²',   align:'right',  render: r => `Rp ${(r.harga_per_cm2 || 0).toLocaleString('id-ID', { minimumFractionDigits:2, maximumFractionDigits:4 })}`, priceField:'harga_per_cm2' },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal',     align:'right',  render: r => idr(r.subtotal) },
   ],
   material_proses: [
     { label:'Proses',       align:'left',   render: r => r.proses || '—' },
-    { label:'Spesifik',     align:'left',   render: r => r.spesifik || '—' },
     { label:'Qty',          align:'right',  render: r => fmt(r.quantity) },
-    { label:'Harga Satuan', align:'right',  render: r => idr(r.harga_satuan), isPrice: true },
+    { label:'Harga Satuan', align:'right',  render: r => idr(r.harga_satuan), priceField:'harga_satuan' },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal',     align:'right',  render: r => idr(r.subtotal) },
   ],
   finishing_wo: [
     { label:'Proses',       align:'left',   render: r => r.proses || '—' },
     { label:'Spesifik',     align:'left',   render: r => r.spesifik || '—' },
-    { label:'Qty',          align:'right',  render: r => fmt(r.quantity) },
-    { label:'Harga Satuan', align:'right',  render: r => idr(r.harga_satuan), isPrice: true },
+    { label:'Harga Satuan', align:'right',  render: r => idr(r.harga_satuan), priceField:'harga_satuan' },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal (×qty)',align:'right',render: r => idr(r.subtotal) },
   ],
@@ -79,7 +86,7 @@ const SECTION_COLS = {
     { label:'Proses',       align:'center', render: r => r.proses || '—' },
     { label:'Detail',       align:'left',   render: r => r.keterangan || '—' },
     { label:'Qty',          align:'right',  render: r => fmt(r.quantity) },
-    { label:'Harga/pcs',   align:'right',  render: r => idr(r.harga), isPrice: true },
+    { label:'Harga/pcs',   align:'right',  render: r => idr(r.harga), priceField:'harga' },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal',     align:'right',  render: r => idr(r.subtotal) },
   ],
@@ -355,16 +362,8 @@ export default function PurchasingReview() {
                     const comp = comparisons[key] || {}
                     const purchPrice = comp.purchasing_price
                     // Bandingkan vs kolom priceField (harga per pcs/satuan) dari estimator
-                    const estPrice = priceCol ? (Number(priceCol.render(row).replace(/[^0-9,]/g, '').replace(',', '.')) || 0) : 0
-                    // Lebih aman: ambil langsung dari field yang sesuai
-                    const estPriceRaw = row[
-                      sec.key === 'material_cost'   ? 'harga_per_pcs' :
-                      sec.key === 'cetak_cost'       ? 'harga_per_lembar' :
-                      sec.key === 'emboss_laminasi'  ? 'harga_per_cm2' :
-                      sec.key === 'material_proses'  ? 'harga_satuan' :
-                      sec.key === 'finishing_wo'     ? 'harga_satuan' :
-                      'harga'
-                    ]
+                    const priceCol = cols.find(c => c.priceField)
+                    const estPriceRaw = priceCol ? (Number(row[priceCol.priceField]) || 0) : 0
                     const diffPct = (purchPrice != null && Number(estPriceRaw) > 0)
                       ? Math.round(((purchPrice - Number(estPriceRaw)) / Number(estPriceRaw)) * 100)
                       : null
