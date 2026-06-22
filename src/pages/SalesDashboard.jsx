@@ -216,6 +216,10 @@ export default function SalesDashboard() {
       reference_image: form.image_urls[0] || '',
       plano_size:     form.luas_permukaan,
       updated_at:     new Date().toISOString(),
+      // spec_updated_at hanya diisi saat EDIT (bukan insert baru),
+      // supaya estimator tahu ada revisi spesifikasi dari sales/manager.
+      // Untuk insert baru, kolom ini dibiarkan null (belum ada revisi).
+      ...(editingId ? { spec_updated_at: new Date().toISOString() } : {}),
     }
 
     const { data: updData, error } = editingId
