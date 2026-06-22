@@ -92,6 +92,10 @@ export default function EstimatorQueue() {
           0%, 100% { opacity: 1; transform: scale(1); }
           50% { opacity: 0.4; transform: scale(1.3); }
         }
+        @keyframes pulseDotEst {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
       `}</style>
       {/* Realtime indicator */}
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:20 }}>
@@ -196,7 +200,26 @@ export default function EstimatorQueue() {
                 </td>
                 <td style={s.td}>{r.profiles?.full_name}</td>
                 <td style={s.td}><div style={{ fontSize:12, color:'#9ca3af' }}>{elapsed(r.submitted_at)}</div></td>
-                <td style={s.td}><span style={s.badge(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</span></td>
+                <td style={s.td}>
+                  <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+                    <span style={s.badge(STATUS_COLOR[r.status])}>{STATUS_LABEL[r.status]}</span>
+                    {(() => {
+                      // Badge "Ada Revisi": muncul kalau request diupdate SETELAH
+                      // estimator mulai kerjakan (updated_at > started_at).
+                      // Ini menandai bahwa spesifikasi berubah sejak estimator mulai.
+                      if (!r.started_at || !r.updated_at) return null
+                      const hasRevision = new Date(r.updated_at) > new Date(r.started_at)
+                      if (!hasRevision) return null
+                      return (
+                        <span style={{
+                          padding:'2px 8px', borderRadius:12, fontSize:10, fontWeight:600,
+                          background:'#FEF3C7', color:'#92400E', border:'1px solid #FCD34D',
+                          animation:'pulseDotEst 1.4s ease-in-out infinite',
+                        }}>⚠ Ada Revisi</span>
+                      )
+                    })()}
+                  </div>
+                </td>
                 <td style={s.td}>
                   {(() => {
                     const q = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
