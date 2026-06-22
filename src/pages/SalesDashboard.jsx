@@ -217,9 +217,9 @@ export default function SalesDashboard() {
       plano_size:     form.luas_permukaan,
     }
 
-    const { error, count } = editingId
-      ? await supabase.from('requests').update(payload, { count: 'exact' }).eq('id', editingId)
-      : { error: null, count: null }
+    const { error } = editingId
+      ? await supabase.from('requests').update(payload).eq('id', editingId)
+      : { error: null }
 
     if (!editingId) {
       const { error: insertErr } = await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
@@ -240,14 +240,6 @@ export default function SalesDashboard() {
 
     if (error) {
       alert('Gagal simpan perubahan: ' + error.message)
-      setLoading(false)
-      return
-    }
-
-    if (count === 0) {
-      // RLS memblokir update diam-diam (mis. status bukan pending) --
-      // beritahu user secara eksplisit daripada diam-diam tidak tersimpan.
-      alert('Perubahan tidak tersimpan. Request ini mungkin sedang dikerjakan estimator dan tidak bisa diubah saat ini. Hubungi estimator jika perlu revisi spesifikasi.')
       setLoading(false)
       return
     }
