@@ -79,6 +79,8 @@ export default function Calculator() {
       requestId, profile, request, activeQty, savedQtys, qtyList,
       material, cetak, emboss, matProses, finishing, additional, margin,
       hasVendorComparison, vendorName, vendorPricePerPcs,
+      // Diisi setelah kalkulasi (lihat blok di bawah, setelah calcXxx dipanggil)
+      _finCalc: null, _addCalc: null,
     }
   })
 
@@ -111,7 +113,11 @@ export default function Calculator() {
         customer_name: state.request?.customer_name || '', product_type: state.request?.product_type || '',
         is_draft: true, is_active: false, deal_status: 'quoted',
         material_cost: state.material, cetak_cost: state.cetak, emboss_laminasi: state.emboss,
-        material_proses: state.matProses, finishing_wo: state.finishing, additional_cost: state.additional,
+        material_proses: state.matProses,
+        // Gunakan hasil kalkulasi (_finCalc/_addCalc) agar harga_satuan/harga tersimpan benar.
+        // Fallback ke state mentah kalau kalkulasi belum jalan (sangat jarang).
+        finishing_wo: state._finCalc || state.finishing,
+        additional_cost: state._addCalc || state.additional,
         margin_percent: num(state.margin), updated_at: new Date().toISOString(),
         cost_source: state.hasVendorComparison ? 'vendor' : 'internal',
         vendor_name: state.hasVendorComparison ? (state.vendorName || null) : null,
@@ -482,6 +488,10 @@ export default function Calculator() {
   const mpCalc   = calcMatProses()
   const finCalc  = calcFinishing()
   const addCalc  = calcAdditional()
+  // Simpan hasil kalkulasi ke latestRef agar saveDraftFor bisa pakai
+  // nilai yang sudah dihitung (bukan state mentah)
+  latestRef.current._finCalc = finCalc
+  latestRef.current._addCalc = addCalc
 
   const sub = {
     material:   matCalc.reduce((s, r) => s + (r.subtotal||0), 0),
