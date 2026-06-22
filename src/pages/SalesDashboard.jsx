@@ -217,19 +217,47 @@ export default function SalesDashboard() {
       plano_size:     form.luas_permukaan,
     }
 
-    const { error } = editingId
-      ? await supabase.from('requests').update(payload).eq('id', editingId)
-      : await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
+    const { error, count } = editingId
+      ? await supabase.from('requests').update(payload, { count: 'exact' }).eq('id', editingId)
+      : { error: null, count: null }
 
-    if (!error) {
-      setSuccess(true)
-      setForm(emptyForm)
-      setShowForm(false)
-      setEditingId(null)
-      setEditingStatus(null)
-      fetchRequests()
-      setTimeout(() => setSuccess(false), 4000)
+    if (!editingId) {
+      const { error: insertErr } = await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
+      if (!insertErr) {
+        setSuccess(true)
+        setForm(emptyForm)
+        setShowForm(false)
+        setEditingId(null)
+        setEditingStatus(null)
+        fetchRequests()
+        setTimeout(() => setSuccess(false), 4000)
+      } else {
+        alert('Gagal kirim request: ' + insertErr.message)
+      }
+      setLoading(false)
+      return
     }
+
+    if (error) {
+      alert('Gagal simpan perubahan: ' + error.message)
+      setLoading(false)
+      return
+    }
+
+    if (count === 0) {
+      // RLS memblokir update diam-diam (mis. status bukan pending) --
+      // beritahu user secara eksplisit daripada diam-diam tidak tersimpan.
+      alert('Perubahan tidak tersimpan. Request ini mungkin sedang dikerjakan estimator dan tidak bisa diubah saat ini. Hubungi estimator jika perlu revisi spesifikasi.')
+      setLoading(false)
+      return
+    }
+    setSuccess(true)
+    setForm(emptyForm)
+    setShowForm(false)
+    setEditingId(null)
+    setEditingStatus(null)
+    fetchRequests()
+    setTimeout(() => setSuccess(false), 4000)
     setLoading(false)
   }
 
