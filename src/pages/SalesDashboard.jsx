@@ -205,7 +205,7 @@ export default function SalesDashboard() {
       customer_name:  form.customer_name,
       product_type:   form.product_type,
       quantities:     qtyNumbers,
-      quantity:       qtyNumbers[0], // kompatibilitas mundur, kolom lama tetap diisi qty pertama
+      quantity:       qtyNumbers[0],
       priority:       form.priority,
       product_size:   form.product_size,
       material_spec:  form.material_spec,
@@ -213,13 +213,15 @@ export default function SalesDashboard() {
       finishing_spec: form.finishing.join(', '),
       notes:          form.notes,
       reference_images: form.image_urls,
-      reference_image: form.image_urls[0] || '', // kompatibilitas mundur, kolom lama tetap diisi gambar pertama
+      reference_image: form.image_urls[0] || '',
       plano_size:     form.luas_permukaan,
     }
 
     const { error } = editingId
       ? await supabase.from('requests').update(payload).eq('id', editingId)
       : { error: null }
+
+    console.log('[DEBUG handleSubmit] editingId:', editingId, '| error:', error, '| finishing_spec:', payload.finishing_spec)
 
     if (!editingId) {
       const { error: insertErr } = await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
