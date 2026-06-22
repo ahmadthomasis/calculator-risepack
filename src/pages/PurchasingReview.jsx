@@ -123,6 +123,7 @@ export default function PurchasingReview() {
   const [notes,       setNotes]       = useState('')
   const [loading,     setLoading]     = useState(true)
   const [saving,      setSaving]      = useState(false)
+  const [dbAdditional,setDbAdditional]= useState([])
 
   useEffect(() => { loadAll() }, [quotationId])
 
@@ -132,6 +133,7 @@ export default function PurchasingReview() {
     if (!q) { setLoading(false); return }
     const { data: req } = await supabase.from('requests').select('*').eq('id', q.request_id).maybeSingle()
     const { data: comps } = await supabase.from('purchasing_comparisons').select('*').eq('quotation_id', quotationId)
+    const { data: addlMaster } = await supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional')
 
     const compMap = {}
     ;(comps || []).forEach(c => {
@@ -142,6 +144,7 @@ export default function PurchasingReview() {
     setQuotation(q)
     setRequest(req)
     setComparisons(compMap)
+    setDbAdditional(addlMaster || [])
     setNotes(q.purchasing_notes || '')
     setLoading(false)
   }
@@ -157,6 +160,32 @@ export default function PurchasingReview() {
         item_name: itemName,
       }
     }))
+  }
+
+  // Helper: hitung harga/pcs additional dari master data (untuk potong & lem samping
+  // yang harganya bukan input manual tapi dihitung dari luas/gramasi/panjang)
+  function resolveAdditionalHarga(r) {
+    const num = v => parseFloat(String(v || '').replace(',', '.')) || 0
+    const match = dbAdditional.find(m => m.name === r.proses)
+    const qty = num(r.quantity)
+    if (r.proses === 'potong' && match) {
+      const parts = String(r.luas_permukaan || '').toLowerCase().split('x')
+      const P = num(parts[0]), L = num(parts[1])
+      const gramasi = num(r.gramasi)
+      const total_kg = (P * L * gramasi) / 10000
+      const biaya_total = total_kg * (match.rate_per_kg || 0)
+      const subtotal_raw = Math.max(biaya_total, match.minimum_charge || 0)
+      return qty > 0 ? subtotal_raw / qty : 0
+    }
+    if (r.proses === 'lem samping' && match) {
+      const panjang = num(r.panjang_lem)
+      const harga_per_pcs_calc = (panjang * (match.rate_a || 0)) + (match.rate_b || 0)
+      const subtotal_calc = harga_per_pcs_calc * qty
+      const subtotal_raw = Math.max(subtotal_calc, match.minimum_charge || 0)
+      return qty > 0 ? subtotal_raw / qty : 0
+    }
+    // Proses manual: pakai harga yang tersimpan
+    return num(r.harga)
   }
 
   // Hitung total harga purchasing per section (hanya baris yang sudah diisi)
@@ -294,8 +323,14 @@ export default function PurchasingReview() {
 
       {/* ── 6 SECTION TABEL DETAIL ── */}
       {SECTIONS.map(sec => {
-        const rows = quotation[sec.key]
-        if (!Array.isArray(rows) || rows.length === 0) return null
+        const rawRows = quotation[sec.key]
+        if (!Array.isArray(rawRows) || rawRows.length === 0) return null
+
+        // Untuk additional_cost: enrich setiap row dengan harga yang dihitung ulang
+        // dari master data (potong & lem samping harganya computed, bukan input manual)
+        const rows = sec.key === 'additional_cost'
+          ? rawRows.map(r => ({ ...r, harga: resolveAdditionalHarga(r) }))
+          : rawRows
 
         const cols = SECTION_COLS[sec.key] || []
         const priceCol = cols.find(c => c.isPrice)
@@ -364,7 +399,11 @@ export default function PurchasingReview() {
                     const purchPrice = comp.purchasing_price
                     // Bandingkan vs kolom priceField (harga per pcs/satuan) dari estimator
                     const priceCol = cols.find(c => c.priceField)
-                    const estPriceRaw = priceCol ? (Number(row[priceCol.priceField]) || 0) : 0
+                    // Untuk additional_cost, harga potong/lem samping dihitung ulang
+                    // dari master data karena field harga di DB lama mungkin 0
+                    const estPriceRaw = sec.key === 'additional_cost'
+                      ? resolveAdditionalHarga(row)
+                      : (priceCol ? (Number(row[priceCol.priceField]) || 0) : 0)
                     const diffPct = (purchPrice != null && Number(estPriceRaw) > 0)
                       ? Math.round(((purchPrice - Number(estPriceRaw)) / Number(estPriceRaw)) * 100)
                       : null
