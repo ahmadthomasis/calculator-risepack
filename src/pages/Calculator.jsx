@@ -505,7 +505,7 @@ export default function Calculator() {
     // PENTING: hanya nonaktifkan quotation untuk qty yang SAMA dengan yang sedang disimpan,
     // supaya quotation qty lain yang sudah tersimpan sebelumnya tidak ikut hilang.
     await supabase.from('quotations').update({ is_active:false })
-      .eq('request_id', requestId).eq('quantity', activeQty)
+      .eq('request_id', requestId).eq('quantity', activeQty).eq('is_draft', false)
 
     const { error } = await supabase.from('quotations').insert({
       request_id: requestId, estimator_id: profile.id,
@@ -534,6 +534,11 @@ export default function Calculator() {
       qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin, hasVendorComparison, vendorName, vendorPricePerPcs }
       const newSavedQtys = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]
       setSavedQtys(newSavedQtys)
+
+      // Pastikan latestRef.current.savedQtys langsung sinkron SEKARANG
+      // supaya handleBeforeNavigate (yang dipicu navigate) tidak salah baca
+      // dan tidak menyimpan draft kosong menimpa quotation yang baru saja disimpan
+      latestRef.current = { ...latestRef.current, savedQtys: newSavedQtys }
 
       const allDone = qtyList.every(q => newSavedQtys.includes(q))
       if (allDone) {
