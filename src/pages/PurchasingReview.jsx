@@ -78,7 +78,7 @@ const SECTION_COLS = {
   finishing_wo: [
     { label:'Proses',       align:'left',   render: r => r.proses || '—' },
     { label:'Spesifik',     align:'left',   render: r => r.spesifik || '—' },
-    { label:'Harga/pcs',   align:'right',  render: r => idr(r.harga_per_pcs), priceField:'harga_per_pcs' },
+    { label:'Harga/pcs',   align:'right',  render: r => idr(r.harga_satuan), priceField:'harga_satuan' },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal (×qty)',align:'right',render: r => idr(r.subtotal) },
   ],
@@ -487,3 +487,4 @@ export default function PurchasingReview() {
     </Layout>
   )
 }
+
