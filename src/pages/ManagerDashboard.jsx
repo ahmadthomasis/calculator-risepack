@@ -74,15 +74,28 @@ export default function ManagerDashboard() {
     setLoading(false)
   }
 
+
   // ── analytics ─────────────────────────────────────────────
-  const totalReq    = requests.length
-  const done        = requests.filter(r => r.status === 'done').length
-  const pending     = requests.filter(r => r.status === 'pending').length
-  const inProgress  = requests.filter(r => r.status === 'in_progress').length
-  const dealCount   = quotations.filter(q => q.deal_status === 'deal').length
+  // Daftar sales unik (dari semua requests, untuk dropdown)
+  const salesList = [...new Set(requests.map(r => r.profiles?.full_name).filter(Boolean))].sort()
+
+  // Filter requests & quotations berdasarkan sales yang dipilih
+  const filteredRequests = salesFilter === 'all'
+    ? requests
+    : requests.filter(r => r.profiles?.full_name === salesFilter)
+  const filteredQuotations = salesFilter === 'all'
+    ? quotations
+    : quotations.filter(q => q.requests?.profiles?.full_name === salesFilter)
+
+  // Semua stats pakai filteredRequests & filteredQuotations
+  const totalReq    = filteredRequests.length
+  const done        = filteredRequests.filter(r => r.status === 'done').length
+  const pending     = filteredRequests.filter(r => r.status === 'pending').length
+  const inProgress  = filteredRequests.filter(r => r.status === 'in_progress').length
+  const dealCount   = filteredQuotations.filter(q => q.deal_status === 'deal').length
   const dealRate    = totalReq > 0 ? Math.round((dealCount / totalReq) * 100) : 0
-  const totalNilai  = quotations.filter(q => q.deal_status === 'deal').reduce((s, q) => s + (q.selling_price || 0), 0)
-  const completedReqs = requests.filter(r => r.completed_at && r.submitted_at)
+  const totalNilai  = filteredQuotations.filter(q => q.deal_status === 'deal').reduce((s, q) => s + (q.selling_price || 0), 0)
+  const completedReqs = filteredRequests.filter(r => r.completed_at && r.submitted_at)
   const isSameDay = (a, b) => new Date(a).toDateString() === new Date(b).toDateString()
   const sameDayReqs   = completedReqs.filter(r => isSameDay(r.submitted_at, r.completed_at))
   const crossDayReqs  = completedReqs.filter(r => !isSameDay(r.submitted_at, r.completed_at))
@@ -90,28 +103,20 @@ export default function ManagerDashboard() {
     list.reduce((sum, r) => sum + (new Date(r.completed_at) - new Date(r.submitted_at)) / 3600000, 0) / list.length
   const avgResponse = avgHours(completedReqs)
 
-  // Breakdown by product type
+  // Breakdown by product type (dari filteredRequests)
   const byProduct = {}
-  requests.forEach(r => {
+  filteredRequests.forEach(r => {
     byProduct[r.product_type] = (byProduct[r.product_type] || 0) + 1
   })
   const productRows = Object.entries(byProduct).sort((a, b) => b[1] - a[1])
 
-  // Breakdown by sales
+  // Breakdown by sales (dari filteredRequests)
   const bySales = {}
-  requests.forEach(r => {
+  filteredRequests.forEach(r => {
     const name = r.profiles?.full_name || 'Unknown'
     bySales[name] = (bySales[name] || 0) + 1
   })
   const salesRows = Object.entries(bySales).sort((a, b) => b[1] - a[1])
-
-  // Daftar sales unik dari requests (untuk dropdown filter)
-  const salesList = [...new Set(requests.map(r => r.profiles?.full_name).filter(Boolean))].sort()
-
-  // Quotation yang ditampilkan di tabel — filter by sales kalau dipilih
-  const filteredQuotations = salesFilter === 'all'
-    ? quotations
-    : quotations.filter(q => q.requests?.profiles?.full_name === salesFilter)
 
   return (
     <Layout title="Dashboard Manager">
@@ -138,6 +143,17 @@ export default function ManagerDashboard() {
           <span style={{ fontSize:13, color:'#9ca3af' }}>—</span>
           <input type="date" value={endDate} min={startDate} max={todayStr} onChange={e => setEndDate(e.target.value)}
             style={{ padding:'6px 10px', border:'1px solid #d1d5db', borderRadius:7, fontSize:13, background:'#fff' }} />
+          <span style={{ color:'#d1d5db' }}>|</span>
+          <select
+            value={salesFilter}
+            onChange={e => setSalesFilter(e.target.value)}
+            style={{ padding:'6px 12px', border:'1px solid #d1d5db', borderRadius:7, fontSize:12, background:'#fff', color: salesFilter === 'all' ? '#6b7280' : '#1d4ed8', cursor:'pointer', outline:'none', fontWeight: salesFilter === 'all' ? 400 : 600 }}
+          >
+            <option value="all">Semua Sales</option>
+            {salesList.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
         </div>
       </div>
 
@@ -195,25 +211,10 @@ export default function ManagerDashboard() {
 
           {/* Recent quotations */}
           <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <div style={{ fontSize:14, fontWeight:600 }}>Quotation Terbaru</div>
-              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                  <span style={{ fontSize:12, color:'#9ca3af' }}>Filter Sales:</span>
-                  <select
-                    value={salesFilter}
-                    onChange={e => setSalesFilter(e.target.value)}
-                    style={{ fontSize:12, padding:'4px 10px', borderRadius:6, border:'1px solid #e5e7eb', background:'#fff', color:'#374151', cursor:'pointer', outline:'none' }}
-                  >
-                    <option value="all">Semua Sales</option>
-                    {salesList.map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div style={{ fontSize:12, color:'#9ca3af' }}>
-                  {filteredQuotations.length}{salesFilter !== 'all' ? `/${quotations.length}` : ''} total
-                </div>
+              <div style={{ fontSize:12, color:'#9ca3af' }}>
+                {filteredQuotations.length}{salesFilter !== 'all' ? `/${quotations.length}` : ''} total — scroll untuk lihat semua
               </div>
             </div>
             <div style={{ maxHeight:520, overflowY:'auto', border:'1px solid #f3f4f6', borderRadius:8 }}>
