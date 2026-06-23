@@ -51,6 +51,7 @@ export default function Calculator() {
   const [dbMatProses, setDbMatProses] = useState([])
   const [dbFinishing, setDbFinishing] = useState([])
   const [dbAdditional,setDbAdditional]= useState([])
+  const [purchasingData, setPurchasingData] = useState(null)  // { status, comparisons[] } dari validasi purchasing
 
   const [material,   setMaterial]   = useState([])
   const [cetak,      setCetak]      = useState([])
@@ -219,6 +220,27 @@ export default function Calculator() {
     const { data: quots } = await supabase.from('quotations').select('*')
       .eq('request_id', requestId).eq('is_active', true).eq('is_draft', false)
 
+    // Load data purchasing comparisons untuk quotation aktif (kalau ada)
+    // Dipakai untuk panel benchmarking purchasing di Calculator
+    const activeQuot = (quots || []).find(q => q.quantity === (
+      Array.isArray(req?.quantities) && req.quantities.length > 0
+        ? req.quantities[0]
+        : req?.quantity
+    )) || (quots || [])[0]
+    let purchData = null
+    if (activeQuot && activeQuot.purchasing_status) {
+      const { data: comps } = await supabase
+        .from('purchasing_comparisons')
+        .select('*')
+        .eq('quotation_id', activeQuot.id)
+      purchData = {
+        status: activeQuot.purchasing_status,
+        reviewedAt: activeQuot.purchasing_reviewed_at,
+        quotationId: activeQuot.id,
+        comparisons: comps || [],
+      }
+    }
+
     // Daftar nama vendor unik yang pernah dipakai (untuk autocomplete), supaya
     // estimator konsisten penulisan nama vendor, bukan ketik bebas tiap kali.
     const { data: vendorRows } = await supabase.from('quotations')
@@ -305,6 +327,7 @@ export default function Calculator() {
       setHasVendorComparison(false); setVendorName(''); setVendorPricePerPcs('')
     }
 
+    setPurchasingData(purchData)
     setLoading(false)
   }
 
@@ -639,6 +662,74 @@ export default function Calculator() {
           })}
         </div>
       )}
+
+      {/* Panel Benchmarking Purchasing — muncul kalau purchasing sudah validasi */}
+      {purchasingData && purchasingData.comparisons.length > 0 && (() => {
+        const C2 = { warn: '#92400e', warnBg: '#fffbeb', warnBorder: '#f59e0b', dangerBg: '#fef2f2', dangerText: '#b91c1c', successText: '#15803d', muted: '#6b7280' }
+        const SECTION_LABEL = { material:'Material', cetak:'Cetak', emboss:'Emboss/Laminasi', mat_proses:'Material Proses', finishing:'Finishing WO', additional:'Additional Cost', vendor_total:'Vendor Total' }
+        // Hanya tampilkan baris yang purchasing_price sudah diisi
+        const filled = purchasingData.comparisons.filter(c => c.purchasing_price != null && c.purchasing_price !== '')
+        // Pisahkan: perlu perhatian (+%) vs aman (-%)
+        const needAttention = filled.filter(c => {
+          if (!c.estimator_price || c.estimator_price === 0) return false
+          return c.purchasing_price > c.estimator_price
+        })
+        const statusColor = purchasingData.status === 'approved' ? '#15803d' : purchasingData.status === 'hold' ? '#b45309' : '#b91c1c'
+        const statusLabel = purchasingData.status === 'approved' ? 'Disetujui' : purchasingData.status === 'hold' ? 'Hold' : 'Cancel'
+        const reviewDate = purchasingData.reviewedAt ? new Date(purchasingData.reviewedAt).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}) : ''
+        return (
+          <div style={{ marginBottom:20, border:`1px solid ${needAttention.length > 0 ? '#f59e0b' : '#86efac'}`, borderRadius:10, overflow:'hidden' }}>
+            <div style={{ background: needAttention.length > 0 ? '#fffbeb' : '#f0fdf4', padding:'10px 16px', display:'flex', alignItems:'center', gap:10, borderBottom:`1px solid ${needAttention.length > 0 ? '#fde68a' : '#bbf7d0'}` }}>
+              <span style={{ fontSize:15 }}>{needAttention.length > 0 ? '⚠️' : '✅'}</span>
+              <span style={{ fontSize:13, fontWeight:600, color: needAttention.length > 0 ? C2.warn : '#15803d' }}>
+                Hasil Validasi Purchasing
+                {needAttention.length > 0 ? ` — ${needAttention.length} item perlu diperhatikan` : ' — Semua harga estimator sudah sesuai'}
+              </span>
+              <span style={{ marginLeft:'auto', fontSize:11, color: statusColor, fontWeight:600, background: purchasingData.status === 'approved' ? '#dcfce7' : purchasingData.status === 'hold' ? '#fef3c7' : '#fee2e2', padding:'2px 10px', borderRadius:20 }}>
+                {statusLabel}
+              </span>
+              {reviewDate && <span style={{ fontSize:11, color: C2.muted }}>{reviewDate}</span>}
+            </div>
+            <div style={{ background:'#fff', overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'#f9fafb' }}>
+                    {['Section','Item','Harga Estimator','Harga Purchasing','Selisih'].map(h => (
+                      <th key={h} style={{ padding:'7px 12px', textAlign: h.startsWith('Harga')||h==='Selisih' ? 'right' : 'left', fontWeight:500, color: C2.muted, fontSize:11, borderBottom:`1px solid #f3f4f6` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filled.map((c, i) => {
+                    const pct = c.estimator_price && c.estimator_price > 0
+                      ? Math.round(((c.purchasing_price - c.estimator_price) / c.estimator_price) * 100)
+                      : null
+                    const isHigh = pct !== null && pct > 0
+                    const idr = v => v != null ? 'Rp ' + Number(v).toLocaleString('id-ID') : '—'
+                    return (
+                      <tr key={i} style={{ background: isHigh ? C2.dangerBg : 'transparent', borderBottom:'1px solid #f3f4f6' }}>
+                        <td style={{ padding:'7px 12px', color: C2.muted, fontSize:11, whiteSpace:'nowrap' }}>{SECTION_LABEL[c.section] || c.section}</td>
+                        <td style={{ padding:'7px 12px', color:'#111827', maxWidth:200 }}>{c.item_name || '—'}</td>
+                        <td style={{ padding:'7px 12px', textAlign:'right', color:'#374151' }}>{idr(c.estimator_price)}</td>
+                        <td style={{ padding:'7px 12px', textAlign:'right', fontWeight: isHigh ? 600 : 400, color: isHigh ? C2.dangerText : '#374151' }}>{idr(c.purchasing_price)}</td>
+                        <td style={{ padding:'7px 12px', textAlign:'right', fontWeight:600, color: isHigh ? C2.dangerText : C2.successText, whiteSpace:'nowrap' }}>
+                          {pct !== null ? (pct > 0 ? `+${pct}%` : `${pct}%`) : '—'}
+                          {isHigh ? ' ⚠' : pct !== null ? ' ✓' : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <div style={{ padding:'8px 14px', borderTop:'1px solid #f3f4f6', fontSize:11, color: C2.muted }}>
+                {needAttention.length > 0
+                  ? '⬆ Baris merah = harga estimator lebih rendah dari purchasing. Perlu direvisi di section terkait.'
+                  : '✓ Tidak ada item yang harga estimator lebih rendah dari purchasing.'}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* Perbandingan Harga Vendor (opsional, TIDAK menggantikan hitung manual di bawah) */}
       <div style={s.card}>
@@ -1051,6 +1142,7 @@ export default function Calculator() {
     </Layout>
   )
 }
+
 
 
 
