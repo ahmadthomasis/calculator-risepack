@@ -80,9 +80,10 @@ export default function PurchasingQueue() {
         ))}
       </div>
 
-      <div style={s.card}>
+      <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>{filtered.length} total</div>
+      <div style={{ maxHeight:560, overflowY:'auto', border:'1px solid #e5e7eb', borderRadius:8 }}>
         <table style={s.table}>
-          <thead>
+          <thead style={{ position:'sticky', top:0, zIndex:1, background:'#f9fafb' }}>
             <tr>
               <th style={s.th}>No. Request</th>
               <th style={s.th}>Customer / Produk</th>
