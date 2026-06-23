@@ -19,9 +19,28 @@ const CATEGORY_BADGE = {
 }
 
 const PRODUCT_TYPES = {
-  'Hardbox': ['2 Piece Box','3 Piece Box','Sleeve/Slip Box','Foldable Box','Flip Box/Magnet','Double Flip Box (tengah)','Neck Box (seperti box perhiasan)'],
-  'Corrugated': ['B1','Dus Sepatu','Seal-end','Mailer Box'],
-  'Softbox': ['Manual-lockbottom','Auto-lockbottom','Gable Box','Tuck-end','Box Sambung','Food-pail','Food-tray','Box Popcorn','Seal-end (tidak ada clip)','Mailer Box','Amplop','Pillow Box','Paperbag','Papercup','Paperbowl','Lunchbox Sekat','Lunchbox Forming','Slide Box','2 Pcs'],
+  'Hardbox': [
+    '2 Piece Box','3 Piece Box','Sleeve/Slip Box','Foldable Box','Flip Box/Magnet',
+    'Double Flip Box (tengah)','Neck Box (seperti box perhiasan)',
+    // nama lama di DB
+    'Hardbox Two Pieces','Hardbox Slide','Hardbox Three Pieces','Hardbox Magnet','Hardbox Lainnya',
+  ],
+  'Corrugated': [
+    'B1','Dus Sepatu','Seal-end','Mailer Box',
+    // nama lama di DB
+    'Corrugated Box','Corrugated Mailer','Corrugated Lainnya',
+  ],
+  'Softbox': [
+    'Manual-lockbottom','Auto-lockbottom','Gable Box','Tuck-end','Box Sambung',
+    'Food-pail','Food-tray','Box Popcorn','Seal-end (tidak ada clip)','Mailer Box',
+    'Amplop','Pillow Box','Paperbag','Papercup','Paperbowl',
+    'Lunchbox Sekat','Lunchbox Forming','Slide Box','2 Pcs',
+    // nama lama di DB
+    'Tuckend','Sleeve','Softbox Lainnya',
+  ],
+  'Paper Bag': [
+    'Paper Bag Handle','Paper Bag Twist','Paper Bag Lainnya',
+  ],
 }
 
 const s = {
@@ -157,7 +176,7 @@ export default function DirectoryHarga() {
           reference_image, reference_images, status
         )
       `)
-      .eq('deal_status', 'deal')
+      .in('deal_status', ['deal', 'quoted', 'followup'])
       .eq('is_active', true)
       .eq('is_draft', false)
       .not('selling_price', 'is', null)
