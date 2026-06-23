@@ -12,6 +12,7 @@ import PricingDataset from './pages/PricingDataset'
 import UserManagement from './pages/UserManagement'
 import PurchasingQueue from './pages/PurchasingQueue'
 import PurchasingReview from './pages/PurchasingReview'
+import DirectoryHarga from './pages/DirectoryHarga'
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth()
@@ -37,6 +38,7 @@ function RoleRouter() {
         <>
           <Route path="/" element={<SalesDashboard />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
+          <Route path="/directory" element={<DirectoryHarga />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -46,6 +48,7 @@ function RoleRouter() {
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />
+          <Route path="/directory" element={<DirectoryHarga />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -56,6 +59,7 @@ function RoleRouter() {
           <Route path="/purchasing/:quotationId" element={<PurchasingReview />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />
+          <Route path="/directory" element={<DirectoryHarga />} />
           <Route path="*" element={<Navigate to="/purchasing" replace />} />
         </>
       )}
@@ -69,6 +73,7 @@ function RoleRouter() {
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />
+          <Route path="/directory" element={<DirectoryHarga />} />
           <Route path="/user-management" element={<UserManagement />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
