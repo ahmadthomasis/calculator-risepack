@@ -133,7 +133,7 @@ export default function Layout({ children, title, beforeNavigate }) {
         })}
         </div>
 
-        {profile?.role === 'manager' && (
+        {(['manager','estimator','purchasing'].includes(profile?.role)) && (
           <div style={{ display:'flex', flexDirection:'column', alignItems:'center', width:'100%', gap:6, marginTop:'auto', paddingTop:14, borderTop:'1px solid rgba(255,255,255,0.12)' }}>
             <span style={{ fontSize:9, fontWeight:700, color:'rgba(255,255,255,0.35)', letterSpacing:'0.5px', textTransform:'uppercase', marginBottom:2 }}>
               Master Data
@@ -234,4 +234,5 @@ export default function Layout({ children, title, beforeNavigate }) {
     </div>
   )
 }
+
 
