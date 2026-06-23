@@ -396,12 +396,13 @@ export default function Calculator() {
       harga = lookupMaterialPrice(r.material, r.plano, r.gsm)
     }
     // Rumus: ((qty + insheet) / plano_get / mata * harga) / qty
-    const harga_per_pcs = (planoGet > 0 && quantity > 0 && insheet > 0)
+    const harga_per_pcs_raw = (planoGet > 0 && quantity > 0 && insheet > 0)
       ? ((quantity + insheet) / planoGet / mata * harga) / quantity
       : 0
-    const subtotal_raw = harga_per_pcs * quantity
+    const subtotal_raw = harga_per_pcs_raw * quantity
     const diskon = num(r.diskon)
     const subtotal = subtotal_raw * (1 - diskon/100)
+    const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
     return { ...r, harga_lembar: harga, harga_per_pcs, subtotal_raw, subtotal }
   }), [material, dbMaterials])
 
@@ -414,10 +415,11 @@ export default function Calculator() {
     const total_biaya = (qty + insheet) >= mesin.qty_threshold
       ? ((qty + insheet - mesin.qty_threshold) * mesin.per_drug + mesin.harga_mesin)
       : mesin.harga_mesin
-    const harga_per_pcs = qty > 0 ? total_biaya / qty : 0
-    const subtotal_raw = harga_per_pcs * qty
+    const harga_per_pcs_raw = qty > 0 ? total_biaya / qty : 0
+    const subtotal_raw = harga_per_pcs_raw * qty
     const diskon = num(r.diskon)
     const subtotal = subtotal_raw * (1 - diskon/100)
+    const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
     return { ...r, harga_per_pcs, harga_mesin: mesin.harga_mesin, per_drug: mesin.per_drug, qty_threshold: mesin.qty_threshold, subtotal_raw, subtotal }
   }), [cetak, dbMesin])
 
@@ -432,9 +434,10 @@ export default function Calculator() {
     // Rumus: (P x L x harga x (qty+insheet)) / qty, minimum dikunci ke minimum_charge
     const subtotal_calc = (P * L * proc.harga * (qty + insheet))
     const subtotal_raw = Math.max(subtotal_calc, proc.minimum_charge)
-    const harga_per_pcs = qty > 0 ? subtotal_raw / qty : 0
+    const harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
     const diskon = num(r.diskon)
     const subtotal = subtotal_raw * (1 - diskon/100)
+    const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
     return { ...r, harga_per_cm2: proc.harga, minimum_charge: proc.minimum_charge, harga_per_pcs, subtotal_raw, subtotal }
   }), [emboss, dbEmboss])
 
@@ -458,7 +461,8 @@ export default function Calculator() {
     const subtotal_raw = subtotal
     const diskon = num(r.diskon)
     const subtotal_final = subtotal_raw * (1 - diskon/100)
-    return { ...r, harga_satuan: harga_per_pcs, subtotal_raw, subtotal: subtotal_final }
+    const harga_satuan_net = harga_per_pcs * (1 - diskon/100)
+    return { ...r, harga_satuan: harga_satuan_net, subtotal_raw, subtotal: subtotal_final }
   }), [matProses, dbMatProses])
 
   const calcFinishing = useCallback(() => finishing.map(r => {
@@ -467,7 +471,8 @@ export default function Calculator() {
     const subtotal_raw = harga * num(request?.quantity || 0)
     const diskon = num(r.diskon)
     const subtotal = subtotal_raw * (1 - diskon/100)
-    return { ...r, harga_satuan: harga, subtotal_raw, subtotal }
+    const harga_satuan_net = harga * (1 - diskon/100)
+    return { ...r, harga_satuan: harga_satuan_net, subtotal_raw, subtotal }
   }), [finishing, dbFinishing, request])
 
   const calcAdditional = useCallback(() => additional.map(r => {
@@ -482,8 +487,9 @@ export default function Calculator() {
       const total_kg = (P * L * gramasi) / 10000
       const biaya_total = total_kg * (match.rate_per_kg || 0)
       const subtotal_raw = Math.max(biaya_total, match.minimum_charge || 0)
-      const harga_per_pcs = qty > 0 ? subtotal_raw / qty : 0
+      const harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
       const subtotal = subtotal_raw * (1 - diskon/100)
+      const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
       return { ...r, harga: harga_per_pcs, subtotal_raw, subtotal }
     }
     if (r.proses === 'lem samping' && match) {
@@ -491,14 +497,16 @@ export default function Calculator() {
       const harga_per_pcs_calc = (panjang * (match.rate_a || 0)) + (match.rate_b || 0)
       const subtotal_calc = harga_per_pcs_calc * qty
       const subtotal_raw = Math.max(subtotal_calc, match.minimum_charge || 0)
-      const harga_per_pcs = qty > 0 ? subtotal_raw / qty : 0
+      const harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
       const subtotal = subtotal_raw * (1 - diskon/100)
+      const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
       return { ...r, harga: harga_per_pcs, subtotal_raw, subtotal }
     }
     // Proses manual lainnya - harga diisi per pcs, subtotal = harga x qty
     const subtotal_raw = num(r.harga) * qty
     const subtotal = subtotal_raw * (1 - diskon/100)
-    return { ...r, subtotal_raw, subtotal }
+    const harga_net = num(r.harga) * (1 - diskon/100)
+    return { ...r, harga: harga_net, subtotal_raw, subtotal }
   }), [additional, dbAdditional])
 
   const matCalc  = calcMaterial()
@@ -1142,6 +1150,7 @@ export default function Calculator() {
     </Layout>
   )
 }
+
 
 
 
