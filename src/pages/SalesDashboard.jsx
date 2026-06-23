@@ -4,11 +4,42 @@ import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
 
 const PRODUCT_TYPES = {
-  'Hardbox': ['Hardbox Two Pieces','Hardbox Slide','Hardbox Three Pieces','Hardbox Magnet','Hardbox Lainnya'],
-  'Softbox': ['Tuckend','Sleeve','Softbox Lainnya'],
-  'Corrugated': ['Corrugated Box','Corrugated Mailer','Corrugated Lainnya'],
-  'Paper Bag': ['Paper Bag Handle','Paper Bag Twist','Paper Bag Lainnya'],
-  'Lainnya': ['Lainnya'],
+  'Hardbox': [
+    '2 Piece Box',
+    '3 Piece Box',
+    'Sleeve/Slip Box',
+    'Foldable Box',
+    'Flip Box/Magnet',
+    'Double Flip Box (tengah)',
+    'Neck Box (seperti box perhiasan)',
+  ],
+  'Corrugated': [
+    'B1',
+    'Dus Sepatu',
+    'Seal-end',
+    'Mailer Box',
+  ],
+  'Softbox': [
+    'Manual-lockbottom',
+    'Auto-lockbottom',
+    'Gable Box',
+    'Tuck-end',
+    'Box Sambung',
+    'Food-pail',
+    'Food-tray',
+    'Box Popcorn',
+    'Seal-end (tidak ada clip)',
+    'Mailer Box',
+    'Amplop',
+    'Pillow Box',
+    'Paperbag',
+    'Papercup',
+    'Paperbowl',
+    'Lunchbox Sekat',
+    'Lunchbox Forming',
+    'Slide Box',
+    '2 Pcs',
+  ],
 }
 
 const FINISHING_OPTIONS = [
@@ -62,7 +93,7 @@ const MAX_IMAGES = 3
 const MAX_QTYS = 5
 
 const emptyForm = {
-  customer_name:'', product_category:'Hardbox', product_type:'Hardbox Two Pieces',
+  customer_name:'', product_category:'Hardbox', product_type:'2 Piece Box',
   quantities:[''], priority:'normal', product_size:'',
   luas_permukaan:'', material_spec:'', print_spec:'',
   finishing:[], notes:'', image_urls:[],
