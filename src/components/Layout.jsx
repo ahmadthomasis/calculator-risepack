@@ -59,12 +59,12 @@ const BookIcon = ({ active }) => (
 
 const sidebarItems = [
   { path: '/potong-kertas', label: 'Potong Kertas', Icon: CutIcon },
+  { path: '/directory', label: 'Direktori', Icon: BookIcon },
 ]
 
 const masterDataItems = [
   { path: '/user-management', label: 'User Mgmt', Icon: UserIcon },
   { path: '/pricing-dataset', label: 'Pricing', Icon: TagIcon },
-  { path: '/directory', label: 'Direktori', Icon: BookIcon },
 ]
 
 export default function Layout({ children, title, beforeNavigate }) {
@@ -245,6 +245,7 @@ export default function Layout({ children, title, beforeNavigate }) {
     </div>
   )
 }
+
 
 
 
