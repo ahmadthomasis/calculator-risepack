@@ -502,12 +502,11 @@ export default function Calculator() {
 
   async function handleSave() {
     setSaving(true)
-    // PENTING: hanya nonaktifkan quotation untuk qty yang SAMA dengan yang sedang disimpan,
-    // supaya quotation qty lain yang sudah tersimpan sebelumnya tidak ikut hilang.
-    await supabase.from('quotations').update({ is_active:false })
-      .eq('request_id', requestId).eq('quantity', activeQty).eq('is_draft', false)
 
-    const { error } = await supabase.from('quotations').insert({
+    // URUTAN AMAN: INSERT dulu dengan timestamp, baru nonaktifkan semua baris
+    // KECUALI yang baru di-INSERT. Kalau INSERT gagal, data lama tetap aman.
+    const now = new Date().toISOString()
+    const { data: inserted, error } = await supabase.from('quotations').insert({
       request_id: requestId, estimator_id: profile.id,
       customer_name: request.customer_name, product_type: request.product_type, quantity: activeQty,
       material_cost: matCalc, cetak_cost: cetakCalc, emboss_laminasi: embCalc,
@@ -517,37 +516,43 @@ export default function Calculator() {
       total_cost: total, margin_percent: num(margin),
       selling_price: Math.round(selling),
       price_per_unit: perUnit, deal_status: 'quoted',
-      // Vendor: data PEMBANDING tambahan opsional, tidak pernah menggantikan
-      // hasil hitung manual di atas. cost_source dipakai cuma sebagai penanda
-      // "ada perbandingan vendor" untuk badge tampilan, bukan eksklusif lagi.
       cost_source: hasVendorComparison ? 'vendor' : 'internal',
       vendor_name: hasVendorComparison ? (vendorName || null) : null,
       vendor_price_per_pcs: hasVendorComparison ? (num(vendorPricePerPcs) || null) : null,
-    })
+    }).select('id').maybeSingle()
 
-    if (!error) {
-      // Hapus draft (kalau ada) untuk qty ini karena sudah final tersimpan
-      await supabase.from('quotations').delete()
-        .eq('request_id', requestId).eq('quantity', activeQty)
-        .eq('estimator_id', profile.id).eq('is_draft', true)
+    if (error || !inserted) {
+      console.error('Gagal simpan quotation:', error)
+      alert('Gagal menyimpan: ' + (error?.message || 'Tidak ada data dikembalikan'))
+      setSaving(false)
+      return
+    }
 
-      qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin, hasVendorComparison, vendorName, vendorPricePerPcs }
-      const newSavedQtys = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]
-      setSavedQtys(newSavedQtys)
+    // INSERT berhasil — nonaktifkan semua baris lama KECUALI yang baru di-INSERT
+    await supabase.from('quotations').update({ is_active: false })
+      .eq('request_id', requestId).eq('quantity', activeQty)
+      .eq('is_draft', false).neq('id', inserted.id)
 
-      // Pastikan latestRef.current.savedQtys langsung sinkron SEKARANG
-      // supaya handleBeforeNavigate (yang dipicu navigate) tidak salah baca
-      // dan tidak menyimpan draft kosong menimpa quotation yang baru saja disimpan
-      latestRef.current = { ...latestRef.current, savedQtys: newSavedQtys }
+    // Hapus draft (kalau ada) untuk qty ini karena sudah final tersimpan
+    await supabase.from('quotations').delete()
+      .eq('request_id', requestId).eq('quantity', activeQty)
+      .eq('estimator_id', profile.id).eq('is_draft', true)
 
-      const allDone = qtyList.every(q => newSavedQtys.includes(q))
-      if (allDone) {
-        await supabase.from('requests').update({ status:'done', completed_at: new Date().toISOString() }).eq('id', requestId)
-        navigate('/')
-      } else {
-        const nextQty = qtyList.find(q => !newSavedQtys.includes(q))
-        if (nextQty != null) switchQty(nextQty, newSavedQtys)
-      }
+    qtyCache[activeQty] = { material, cetak, emboss, matProses, finishing, additional, margin, hasVendorComparison, vendorName, vendorPricePerPcs }
+    const newSavedQtys = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]
+    setSavedQtys(newSavedQtys)
+
+    // Sync latestRef.savedQtys langsung agar handleBeforeNavigate tidak menyimpan
+    // draft kosong saat navigate() dipanggil sebelum useEffect sempat jalan
+    latestRef.current = { ...latestRef.current, savedQtys: newSavedQtys }
+
+    const allDone = qtyList.every(q => newSavedQtys.includes(q))
+    if (allDone) {
+      await supabase.from('requests').update({ status:'done', completed_at: new Date().toISOString() }).eq('id', requestId)
+      navigate('/')
+    } else {
+      const nextQty = qtyList.find(q => !newSavedQtys.includes(q))
+      if (nextQty != null) switchQty(nextQty, newSavedQtys)
     }
     setSaving(false)
   }
