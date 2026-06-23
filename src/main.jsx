@@ -45,6 +45,7 @@ function RoleRouter() {
           <Route path="/" element={<EstimatorQueue />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
+          <Route path="/pricing-dataset" element={<PricingDataset />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -54,6 +55,7 @@ function RoleRouter() {
           <Route path="/purchasing" element={<PurchasingQueue />} />
           <Route path="/purchasing/:quotationId" element={<PurchasingReview />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
+          <Route path="/pricing-dataset" element={<PricingDataset />} />
           <Route path="*" element={<Navigate to="/purchasing" replace />} />
         </>
       )}
@@ -84,5 +86,6 @@ ReactDOM.createRoot(document.getElementById('root')).render(
     </BrowserRouter>
   </React.StrictMode>
 )
+
 
 
