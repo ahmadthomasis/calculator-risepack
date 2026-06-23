@@ -24,7 +24,7 @@ const categoryLabel = {
 }
 
 const fieldsByCategory = {
-  material:         [{ key:'gsm', label:'GSM' }, { key:'price', label:'Harga / Lembar' }],
+  material:         [{ key:'price', label:'Harga / Lembar' }],
   cetak:            [{ key:'price', label:'Harga / Lembar' }, { key:'harga_mesin', label:'Harga Mesin' }, { key:'qty_threshold', label:'Qty Threshold' }],
   emboss_laminasi:  [{ key:'price', label:'Harga / cm²' }, { key:'minimum_charge', label:'Min. Charge' }],
   material_proses:  [{ key:'price', label:'Harga' }, { key:'rate_per_cm', label:'Rate / cm' }],
@@ -136,7 +136,7 @@ export default function PricingDataset() {
       name: addForm.name.trim(),
       spec: addForm.spec.trim() || null,
       unit: addForm.unit.trim() || null,
-      gsm: parseFloat(addForm.gsm) || null,
+      notes: addForm.gsm.trim() || null,  // GSM disimpan di kolom notes
       price: parseFloat(addForm.price) || 0,
       is_active: true,
     }
@@ -342,12 +342,8 @@ export default function PricingDataset() {
                         </td>
                         <td style={s.td}>{row.name}</td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.spec || '–'}</td>
-                        <td style={{ ...s.td }}>
-                          {row.category === 'material' ? (
-                            <EditableCell value={row.gsm || 0} onSave={(val) => handleUpdate(row.id, 'gsm', val)} />
-                          ) : (
-                            <span style={{ color:'#9ca3af' }}>–</span>
-                          )}
+                        <td style={{ ...s.td, color:'#9ca3af' }}>
+                          {row.category === 'material' ? (row.notes || '–') : '–'}
                         </td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.unit || '–'}</td>
                         {activeFieldKeys.map(f => (
