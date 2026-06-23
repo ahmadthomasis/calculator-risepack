@@ -24,7 +24,7 @@ const categoryLabel = {
 }
 
 const fieldsByCategory = {
-  material:         [{ key:'price', label:'Harga / Lembar' }],
+  material:         [{ key:'gsm', label:'GSM' }, { key:'price', label:'Harga / Lembar' }],
   cetak:            [{ key:'price', label:'Harga / Lembar' }, { key:'harga_mesin', label:'Harga Mesin' }, { key:'qty_threshold', label:'Qty Threshold' }],
   emboss_laminasi:  [{ key:'price', label:'Harga / cm²' }, { key:'minimum_charge', label:'Min. Charge' }],
   material_proses:  [{ key:'price', label:'Harga' }, { key:'rate_per_cm', label:'Rate / cm' }],
@@ -34,7 +34,7 @@ const fieldsByCategory = {
 // Form kosong untuk tambah baru per kategori
 const emptyForm = (category) => ({
   category: category !== 'all' ? category : 'material',
-  name: '', spec: '', unit: 'lembar',
+  name: '', spec: '', unit: 'lembar', gsm: '',
   price: '', rate_per_kg: '', rate_a: '', rate_b: '',
   minimum_charge: '', harga_mesin: '', qty_threshold: '', rate_per_cm: '',
 })
@@ -136,6 +136,7 @@ export default function PricingDataset() {
       name: addForm.name.trim(),
       spec: addForm.spec.trim() || null,
       unit: addForm.unit.trim() || null,
+      gsm: parseFloat(addForm.gsm) || null,
       price: parseFloat(addForm.price) || 0,
       is_active: true,
     }
@@ -229,6 +230,13 @@ export default function PricingDataset() {
                   onChange={e => setAddForm(f => ({ ...f, spec: e.target.value }))} />
               </div>
               <div>
+                <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>GSM (Gramasi)</div>
+                <input style={{ ...s.input, width:'100%', boxSizing:'border-box' }}
+                  type="number" placeholder="cth. 260"
+                  value={addForm.gsm}
+                  onChange={e => setAddForm(f => ({ ...f, gsm: e.target.value }))} />
+              </div>
+              <div>
                 <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>Unit</div>
                 <input style={{ ...s.input, width:'100%', boxSizing:'border-box' }}
                   placeholder="cth. lembar"
@@ -311,6 +319,7 @@ export default function PricingDataset() {
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Kategori</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Nama</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Spec</th>
+                    <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>GSM</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Unit</th>
                     {activeFieldKeys.map(f => (
                       <th key={f.key} style={{ ...s.th, textAlign:'right', position:'sticky', top:0, background:'#fff', zIndex:1 }}>{f.label}</th>
@@ -333,6 +342,13 @@ export default function PricingDataset() {
                         </td>
                         <td style={s.td}>{row.name}</td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.spec || '–'}</td>
+                        <td style={{ ...s.td }}>
+                          {row.category === 'material' ? (
+                            <EditableCell value={row.gsm || 0} onSave={(val) => handleUpdate(row.id, 'gsm', val)} />
+                          ) : (
+                            <span style={{ color:'#9ca3af' }}>–</span>
+                          )}
+                        </td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.unit || '–'}</td>
                         {activeFieldKeys.map(f => (
                           <td key={f.key} style={{ ...s.td, textAlign:'right' }}>
