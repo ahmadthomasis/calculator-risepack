@@ -5,6 +5,11 @@ import Layout from '../components/Layout'
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
 
 const idr = n => 'Rp ' + Math.round(n || 0).toLocaleString('id-ID')
+const fmtDate = s => {
+  if (!s) return '—'
+  const d = new Date(s)
+  return d.toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' })
+}
 const fmtQty = n => (n || 0).toLocaleString('id-ID')
 
 const CATEGORY_BADGE = {
@@ -311,6 +316,9 @@ export default function DirectoryHarga() {
                     <div style={{ borderTop:`0.5px solid ${C.cream}`, paddingTop:8, display:'flex', justifyContent:'space-between', alignItems:'center' }}>
                       <span style={{ fontSize:11, color:'#9ca3af' }}>Harga/pcs</span>
                       <span style={{ fontSize:14, fontWeight:500, color:C.orange }}>{idr(item.price_per_unit)}</span>
+                    </div>
+                    <div style={{ marginTop:6, fontSize:11, color:'#9ca3af' }}>
+                      📅 {fmtDate(item.updated_at)}
                     </div>
                   </div>
                 </div>
