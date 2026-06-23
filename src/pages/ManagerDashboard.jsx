@@ -37,6 +37,7 @@ export default function ManagerDashboard() {
   const [startDate,  setStartDate]  = useState(thirtyDaysAgoStr)
   const [endDate,    setEndDate]    = useState(todayStr)
   const [lastSeen]   = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
+  const [salesFilter, setSalesFilter] = useState('all')
 
   useEffect(() => {
     const t = setTimeout(() => localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString()), 3000)
@@ -64,7 +65,7 @@ export default function ManagerDashboard() {
     const [{ data: reqs }, { data: quots }] = await Promise.all([
       supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)')
         .gte('submitted_at', startInclusive.toISOString()).lte('submitted_at', endInclusive.toISOString()),
-      supabase.from('quotations').select('*, requests(customer_name, product_type, quantity, submitted_at)')
+      supabase.from('quotations').select('*, requests(id, customer_name, product_type, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
         .gte('created_at', startInclusive.toISOString()).lte('created_at', endInclusive.toISOString())
         .eq('is_active', true).eq('is_draft', false),
     ])
@@ -103,6 +104,14 @@ export default function ManagerDashboard() {
     bySales[name] = (bySales[name] || 0) + 1
   })
   const salesRows = Object.entries(bySales).sort((a, b) => b[1] - a[1])
+
+  // Daftar sales unik dari requests (untuk dropdown filter)
+  const salesList = [...new Set(requests.map(r => r.profiles?.full_name).filter(Boolean))].sort()
+
+  // Quotation yang ditampilkan di tabel — filter by sales kalau dipilih
+  const filteredQuotations = salesFilter === 'all'
+    ? quotations
+    : quotations.filter(q => q.requests?.profiles?.full_name === salesFilter)
 
   return (
     <Layout title="Dashboard Manager">
@@ -186,9 +195,26 @@ export default function ManagerDashboard() {
 
           {/* Recent quotations */}
           <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'baseline', marginBottom:16 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, flexWrap:'wrap', gap:10 }}>
               <div style={{ fontSize:14, fontWeight:600 }}>Quotation Terbaru</div>
-              <div style={{ fontSize:12, color:'#9ca3af' }}>{quotations.length} total — scroll untuk lihat semua</div>
+              <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                  <span style={{ fontSize:12, color:'#9ca3af' }}>Filter Sales:</span>
+                  <select
+                    value={salesFilter}
+                    onChange={e => setSalesFilter(e.target.value)}
+                    style={{ fontSize:12, padding:'4px 10px', borderRadius:6, border:'1px solid #e5e7eb', background:'#fff', color:'#374151', cursor:'pointer', outline:'none' }}
+                  >
+                    <option value="all">Semua Sales</option>
+                    {salesList.map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div style={{ fontSize:12, color:'#9ca3af' }}>
+                  {filteredQuotations.length}{salesFilter !== 'all' ? `/${quotations.length}` : ''} total
+                </div>
+              </div>
             </div>
             <div style={{ maxHeight:520, overflowY:'auto', border:'1px solid #f3f4f6', borderRadius:8 }}>
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
@@ -200,10 +226,10 @@ export default function ManagerDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {quotations.length === 0 && (
-                    <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Belum ada quotation</td></tr>
+                  {filteredQuotations.length === 0 && (
+                    <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>{salesFilter !== 'all' ? `Tidak ada quotation dari ${salesFilter}` : 'Belum ada quotation'}</td></tr>
                 )}
-                {quotations.map(q => (
+                {filteredQuotations.map(q => (
                   <tr key={q.id}>
                     <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.customer_name}</td>
                     <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.product_type}</td>
@@ -277,5 +303,6 @@ export default function ManagerDashboard() {
     </Layout>
   )
 }
+
 
 
