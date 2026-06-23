@@ -425,23 +425,23 @@ export default function SalesDashboard() {
               </div>
               <div>
                 <label style={s.label}>Ukuran Produk (P×L×T)</label>
-                <input style={s.input} value={form.product_size}
-                  onChange={e => setForm({...form, product_size: e.target.value})} placeholder="contoh: 17×12×8 cm" />
+                <textarea style={s.textarea} value={form.product_size}
+                  onChange={e => setForm({...form, product_size: e.target.value})} placeholder="contoh: 17×12×8 cm" rows={2} />
               </div>
               <div>
                 <label style={s.label}>Luas Permukaan (m²)</label>
-                <input style={s.input} value={form.luas_permukaan}
-                  onChange={e => setForm({...form, luas_permukaan: e.target.value})} placeholder="contoh: 0.065" />
+                <textarea style={s.textarea} value={form.luas_permukaan}
+                  onChange={e => setForm({...form, luas_permukaan: e.target.value})} placeholder="contoh: 0.065" rows={2} />
               </div>
               <div>
                 <label style={s.label}>Spesifikasi Material</label>
-                <input style={s.input} value={form.material_spec}
-                  onChange={e => setForm({...form, material_spec: e.target.value})} placeholder="contoh: Art Carton 260gsm" />
+                <textarea style={s.textarea} value={form.material_spec}
+                  onChange={e => setForm({...form, material_spec: e.target.value})} placeholder="contoh: Art Carton 260gsm" rows={2} />
               </div>
               <div>
                 <label style={s.label}>Spesifikasi Print</label>
-                <input style={s.input} value={form.print_spec}
-                  onChange={e => setForm({...form, print_spec: e.target.value})} placeholder="contoh: 4 warna CMYK" />
+                <textarea style={s.textarea} value={form.print_spec}
+                  onChange={e => setForm({...form, print_spec: e.target.value})} placeholder="contoh: 4 warna CMYK" rows={2} />
               </div>
             </div>
 
