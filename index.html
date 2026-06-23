@@ -8,9 +8,18 @@
       * { margin: 0; padding: 0; box-sizing: border-box; }
       body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; }
     </style>
+    <script>
+      // Handle redirect dari 404.html (GitHub Pages SPA fix)
+      var redirect = sessionStorage.getItem('redirect')
+      if (redirect) {
+        sessionStorage.removeItem('redirect')
+        // Gunakan replaceState agar back button tetap bekerja normal
+        window.history.replaceState(null, null, redirect)
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script type="module" src="/calculator-risepack/src/main.jsx"></script>
   </body>
 </html>
