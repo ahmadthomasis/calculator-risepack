@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import Layout from '../components/Layout'
 
@@ -38,6 +38,10 @@ export default function ManagerDashboard() {
   const [endDate,    setEndDate]    = useState(todayStr)
   const [lastSeen]   = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
   const [salesFilter, setSalesFilter] = useState('all')
+  const [tableSearch, setTableSearch] = useState('')
+  const [tableDealFilter, setTableDealFilter] = useState('')
+  const [tablePurchFilter, setTablePurchFilter] = useState('')
+  const [tableSort, setTableSort] = useState('date_desc')
 
   useEffect(() => {
     const t = setTimeout(() => localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString()), 3000)
@@ -86,6 +90,29 @@ export default function ManagerDashboard() {
   const filteredQuotations = salesFilter === 'all'
     ? quotations
     : quotations.filter(q => q.requests?.profiles?.full_name === salesFilter)
+
+  // tableQuotations: untuk tabel saja, dengan search + filter deal + filter purchasing + sort
+  const tableQuotations = useMemo(() => {
+    let list = [...filteredQuotations]
+    if (tableSearch.trim()) {
+      const q = tableSearch.toLowerCase()
+      list = list.filter(x =>
+        x.requests?.customer_name?.toLowerCase().includes(q) ||
+        x.requests?.product_type?.toLowerCase().includes(q)
+      )
+    }
+    if (tableDealFilter) list = list.filter(x => x.deal_status === tableDealFilter)
+    if (tablePurchFilter === 'none') list = list.filter(x => !x.purchasing_status)
+    else if (tablePurchFilter) list = list.filter(x => x.purchasing_status === tablePurchFilter)
+    list.sort((a, b) => {
+      if (tableSort === 'harga_desc')   return (b.selling_price || 0) - (a.selling_price || 0)
+      if (tableSort === 'harga_asc')    return (a.selling_price || 0) - (b.selling_price || 0)
+      if (tableSort === 'perunit_desc') return (b.price_per_unit || 0) - (a.price_per_unit || 0)
+      if (tableSort === 'perunit_asc')  return (a.price_per_unit || 0) - (b.price_per_unit || 0)
+      return new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
+    })
+    return list
+  }, [filteredQuotations, tableSearch, tableDealFilter, tablePurchFilter, tableSort])
 
   // Semua stats pakai filteredRequests & filteredQuotations
   const totalReq    = filteredRequests.length
@@ -211,11 +238,43 @@ export default function ManagerDashboard() {
 
           {/* Recent quotations */}
           <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
               <div style={{ fontSize:14, fontWeight:600 }}>Quotation Terbaru</div>
               <div style={{ fontSize:12, color:'#9ca3af' }}>
-                {filteredQuotations.length}{salesFilter !== 'all' ? `/${quotations.length}` : ''} total — scroll untuk lihat semua
+                {tableQuotations.length}/{quotations.length} total
               </div>
+            </div>
+            {/* Search + Filter tabel */}
+            <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
+              <input
+                placeholder="Cari customer atau produk..."
+                value={tableSearch} onChange={e => setTableSearch(e.target.value)}
+                style={{ flex:1, minWidth:160, height:32, padding:'0 10px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', outline:'none' }}
+              />
+              <select value={tableDealFilter} onChange={e => setTableDealFilter(e.target.value)}
+                style={{ height:32, padding:'0 8px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', background:'#fff', outline:'none' }}>
+                <option value="">Semua Status</option>
+                <option value="quoted">Quoted</option>
+                <option value="followup">Followup</option>
+                <option value="deal">Deal</option>
+                <option value="cancel">Cancel</option>
+              </select>
+              <select value={tablePurchFilter} onChange={e => setTablePurchFilter(e.target.value)}
+                style={{ height:32, padding:'0 8px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', background:'#fff', outline:'none' }}>
+                <option value="">Semua Purchasing</option>
+                <option value="none">Belum dikirim</option>
+                <option value="pending">Menunggu</option>
+                <option value="approved">Disetujui</option>
+                <option value="hold">Hold</option>
+              </select>
+              <select value={tableSort} onChange={e => setTableSort(e.target.value)}
+                style={{ height:32, padding:'0 8px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', background:'#fff', outline:'none' }}>
+                <option value="date_desc">Terbaru</option>
+                <option value="harga_desc">Harga Jual ↓</option>
+                <option value="harga_asc">Harga Jual ↑</option>
+                <option value="perunit_desc">Per Unit ↓</option>
+                <option value="perunit_asc">Per Unit ↑</option>
+              </select>
             </div>
             <div style={{ maxHeight:520, overflowY:'auto', border:'1px solid #f3f4f6', borderRadius:8 }}>
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
@@ -227,10 +286,10 @@ export default function ManagerDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredQuotations.length === 0 && (
-                    <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>{salesFilter !== 'all' ? `Tidak ada quotation dari ${salesFilter}` : 'Belum ada quotation'}</td></tr>
+                  {tableQuotations.length === 0 && (
+                    <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Tidak ada quotation yang cocok</td></tr>
                 )}
-                {filteredQuotations.map(q => (
+                {tableQuotations.map(q => (
                   <tr key={q.id}>
                     <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.customer_name}</td>
                     <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.product_type}</td>
