@@ -201,38 +201,47 @@ export default function ManagerDashboard() {
           </div>
 
           <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, marginBottom:20 }}>
-            {/* By product */}
-            <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <div style={{ fontSize:14, fontWeight:600, marginBottom:16 }}>Request per Produk</div>
-              {productRows.map(([name, count]) => (
-                <div key={name} style={{ marginBottom:10 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
-                    <span style={{ color:'#374151' }}>{name}</span>
-                    <span style={{ fontWeight:500 }}>{count}</span>
+            {/* By product — top 5, compact */}
+            <div style={{ background:'#fff', borderRadius:12, padding:'16px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <span style={{ fontSize:13, fontWeight:600 }}>Request per Produk</span>
+                <span style={{ fontSize:11, color:'#9ca3af' }}>Top {Math.min(5, productRows.length)} dari {productRows.length}</span>
+              </div>
+              {productRows.slice(0, 5).map(([name, count]) => (
+                <div key={name} style={{ marginBottom:7 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                    <span style={{ color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'75%' }}>{name}</span>
+                    <span style={{ fontWeight:600, color:'#2563eb', flexShrink:0 }}>{count}</span>
                   </div>
-                  <div style={{ height:6, background:'#f3f4f6', borderRadius:3 }}>
-                    <div style={{ height:6, background:'#2563eb', borderRadius:3, width:`${(count/totalReq)*100}%`, transition:'width 0.5s' }} />
+                  <div style={{ height:4, background:'#f3f4f6', borderRadius:2 }}>
+                    <div style={{ height:4, background:'#2563eb', borderRadius:2, width:`${(count/productRows[0][1])*100}%`, transition:'width 0.5s' }} />
                   </div>
                 </div>
               ))}
-              {productRows.length === 0 && <div style={{ color:'#9ca3af', fontSize:13 }}>Belum ada data</div>}
+              {productRows.length === 0 && <div style={{ color:'#9ca3af', fontSize:12 }}>Belum ada data</div>}
+              {productRows.length > 5 && (
+                <div style={{ fontSize:11, color:'#9ca3af', marginTop:8 }}>+{productRows.length - 5} produk lainnya</div>
+              )}
             </div>
 
-            {/* By sales */}
-            <div style={{ background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
-              <div style={{ fontSize:14, fontWeight:600, marginBottom:16 }}>Request per Sales</div>
+            {/* By sales — compact */}
+            <div style={{ background:'#fff', borderRadius:12, padding:'16px 20px', boxShadow:'0 1px 4px rgba(0,0,0,0.06)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+                <span style={{ fontSize:13, fontWeight:600 }}>Request per Sales</span>
+                <span style={{ fontSize:11, color:'#9ca3af' }}>{salesRows.length} sales</span>
+              </div>
               {salesRows.map(([name, count]) => (
-                <div key={name} style={{ marginBottom:10 }}>
-                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:13, marginBottom:4 }}>
-                    <span style={{ color:'#374151' }}>{name}</span>
-                    <span style={{ fontWeight:500 }}>{count}</span>
+                <div key={name} style={{ marginBottom:7 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:3 }}>
+                    <span style={{ color:'#374151', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', maxWidth:'75%' }}>{name}</span>
+                    <span style={{ fontWeight:600, color:'#7c3aed', flexShrink:0 }}>{count}</span>
                   </div>
-                  <div style={{ height:6, background:'#f3f4f6', borderRadius:3 }}>
-                    <div style={{ height:6, background:'#7c3aed', borderRadius:3, width:`${(count/totalReq)*100}%`, transition:'width 0.5s' }} />
+                  <div style={{ height:4, background:'#f3f4f6', borderRadius:2 }}>
+                    <div style={{ height:4, background:'#7c3aed', borderRadius:2, width:`${salesRows[0] ? (count/salesRows[0][1])*100 : 0}%`, transition:'width 0.5s' }} />
                   </div>
                 </div>
               ))}
-              {salesRows.length === 0 && <div style={{ color:'#9ca3af', fontSize:13 }}>Belum ada data</div>}
+              {salesRows.length === 0 && <div style={{ color:'#9ca3af', fontSize:12 }}>Belum ada data</div>}
             </div>
           </div>
 
