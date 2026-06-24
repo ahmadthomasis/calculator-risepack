@@ -149,9 +149,11 @@ export default function ManagerDashboard() {
   async function handleDeleteQuotation(item) {
     // 1. Hapus purchasing_comparisons dulu (FK constraint)
     await supabase.from('purchasing_comparisons').delete().eq('quotation_id', item.id)
-    // 2. Hapus semua versi quotation (is_active true/false) untuk request+id ini
-    const { error } = await supabase.from('quotations').delete().eq('id', item.id)
-    if (error) { alert('Gagal hapus: ' + error.message); return }
+    // 2. Hapus SEMUA quotation yang terkait dengan request ini (semua qty, semua versi)
+    await supabase.from('quotations').delete().eq('request_id', item.request_id)
+    // 3. Hapus request-nya juga agar hilang dari semua view (estimator, sales, dll)
+    const { error } = await supabase.from('requests').delete().eq('id', item.request_id)
+    if (error) { alert('Gagal hapus request: ' + error.message); return }
     setConfirmDelete(null)
     loadData()
   }
