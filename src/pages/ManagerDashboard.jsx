@@ -42,6 +42,7 @@ export default function ManagerDashboard() {
   const [tableDealFilter, setTableDealFilter] = useState('')
   const [tablePurchFilter, setTablePurchFilter] = useState('')
   const [tableSort, setTableSort] = useState('date_desc')
+  const [confirmDelete, setConfirmDelete] = useState(null) // { id, request_id, customer, produk }
 
   useEffect(() => {
     const t = setTimeout(() => localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString()), 3000)
@@ -144,6 +145,16 @@ export default function ManagerDashboard() {
     bySales[name] = (bySales[name] || 0) + 1
   })
   const salesRows = Object.entries(bySales).sort((a, b) => b[1] - a[1])
+
+  async function handleDeleteQuotation(item) {
+    // 1. Hapus purchasing_comparisons dulu (FK constraint)
+    await supabase.from('purchasing_comparisons').delete().eq('quotation_id', item.id)
+    // 2. Hapus semua versi quotation (is_active true/false) untuk request+id ini
+    const { error } = await supabase.from('quotations').delete().eq('id', item.id)
+    if (error) { alert('Gagal hapus: ' + error.message); return }
+    setConfirmDelete(null)
+    loadData()
+  }
 
   return (
     <Layout title="Dashboard Manager">
@@ -289,7 +300,7 @@ export default function ManagerDashboard() {
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>
-                    {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Sumber','Purchasing','Tanggal'].map(h => (
+                    {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Sumber','Purchasing','Tanggal',''].map(h => (
                       <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:12, color:'#9ca3af', fontWeight:500, borderBottom:'2px solid #f3f4f6', position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
                     ))}
                   </tr>
@@ -359,6 +370,18 @@ export default function ManagerDashboard() {
                     <td style={{ padding:'10px', fontSize:12, color:'#9ca3af' }}>
                       {new Date(q.created_at).toLocaleDateString('id-ID')}
                     </td>
+                    <td style={{ padding:'10px' }}>
+                      <button
+                        onClick={() => setConfirmDelete({
+                          id: q.id,
+                          request_id: q.requests?.id,
+                          customer: q.requests?.customer_name,
+                          produk: q.requests?.product_type,
+                        })}
+                        style={{ background:'none', border:'1px solid #fecaca', borderRadius:6, padding:'3px 8px', fontSize:11, color:'#dc2626', cursor:'pointer' }}
+                        title="Hapus quotation ini"
+                      >Hapus</button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -366,6 +389,37 @@ export default function ManagerDashboard() {
             </div>
           </div>
         </>
+      )}
+      {/* Modal konfirmasi hapus */}
+      {confirmDelete && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:28, maxWidth:400, width:'90%', boxShadow:'0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontSize:18, marginBottom:8 }}>🗑️</div>
+            <div style={{ fontSize:15, fontWeight:600, color:'#111', marginBottom:8 }}>Hapus Quotation?</div>
+            <div style={{ fontSize:13, color:'#6b7280', marginBottom:6 }}>
+              Kamu akan menghapus quotation milik:
+            </div>
+            <div style={{ background:'#fef2f2', border:'1px solid #fecaca', borderRadius:8, padding:'10px 14px', marginBottom:16 }}>
+              <div style={{ fontSize:13, fontWeight:500, color:'#dc2626' }}>{confirmDelete.customer} — {confirmDelete.produk}</div>
+              <div style={{ fontSize:11, color:'#9ca3af', marginTop:4 }}>
+                Semua data quotation + perbandingan harga purchasing akan terhapus permanen.
+              </div>
+            </div>
+            <div style={{ fontSize:12, color:'#dc2626', marginBottom:20, fontWeight:500 }}>
+              ⚠️ Aksi ini tidak bisa dibatalkan.
+            </div>
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
+              <button onClick={() => setConfirmDelete(null)}
+                style={{ padding:'8px 16px', borderRadius:7, border:'1px solid #e5e7eb', background:'#fff', fontSize:13, cursor:'pointer' }}>
+                Batal
+              </button>
+              <button onClick={() => handleDeleteQuotation(confirmDelete)}
+                style={{ padding:'8px 16px', borderRadius:7, border:'none', background:'#dc2626', color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}>
+                Ya, Hapus Permanen
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </Layout>
   )
