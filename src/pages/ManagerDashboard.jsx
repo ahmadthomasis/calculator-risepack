@@ -267,7 +267,6 @@ export default function ManagerDashboard() {
                     </td>
                     <td style={{ padding:'10px' }}>
                       {!q.purchasing_status ? (
-                        q.deal_status === 'deal' ? (
                           <button
                             onClick={async () => {
                               const { error } = await supabase.from('quotations').update({
@@ -279,7 +278,6 @@ export default function ManagerDashboard() {
                             }}
                             style={{ padding:'5px 10px', background:'#fff', border:'1px solid #2563eb', color:'#2563eb', borderRadius:6, fontSize:12, fontWeight:500, cursor:'pointer' }}
                           >Kirim ke Purchasing</button>
-                        ) : <span style={{ fontSize:12, color:'#d1d5db' }}>—</span>
                       ) : (
                         <span style={{
                           padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500,
@@ -304,6 +302,7 @@ export default function ManagerDashboard() {
     </Layout>
   )
 }
+
 
 
 
