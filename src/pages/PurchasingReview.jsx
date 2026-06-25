@@ -131,11 +131,11 @@ export default function PurchasingReview() {
 
   useEffect(() => { loadAll() }, [quotationId])
 
-  // Auto-refresh setiap 30 detik agar purchasing lain bisa lihat update terbaru
-  useEffect(() => {
-    const interval = setInterval(() => { loadAll() }, 30000)
-    return () => clearInterval(interval)
-  }, [quotationId])
+  // Auto-refresh dinonaktifkan — purchasing bisa refresh manual kalau perlu
+  // useEffect(() => {
+  //   const interval = setInterval(() => { loadAll() }, 30000)
+  //   return () => clearInterval(interval)
+  // }, [quotationId])
 
   async function loadAll() {
     setLoading(true)
