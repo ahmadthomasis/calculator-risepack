@@ -211,7 +211,7 @@ export default function Calculator() {
       supabase.from('requests').select('*').eq('id', requestId).single(),
       supabase.from('raw_materials').select('*').eq('category','material').order('name'),
       supabase.from('raw_materials').select('id,name,spec,notes,price,harga_mesin,qty_threshold').eq('category','cetak').order('name'),
-      supabase.from('raw_materials').select('id,name,spec,notes,price,minimum_charge').eq('category','emboss_laminasi').order('name'),
+      supabase.from('raw_materials').select('id,name,spec,notes,unit,price,minimum_charge').eq('category','emboss_laminasi').order('name'),
       supabase.from('raw_materials').select('id,name,spec,notes,price,rate_per_cm').eq('category','material_proses').order('name'),
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
       supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional').order('name'),
