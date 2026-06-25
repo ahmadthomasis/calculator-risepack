@@ -13,6 +13,92 @@ const s = {
 
 const num = v => parseFloat(v) || 0
 
+// ── Kalkulator Layout LP ─────────────────────────────────────
+function LayoutCalc() {
+  const [prodP, setProdP] = useState('')   // panjang produk
+  const [prodL, setProdL] = useState('')   // lebar produk
+  const [gap,   setGap]   = useState('0') // jarak antar produk
+  const [cols,  setCols]  = useState('')   // jumlah kolom (kesamping)
+  const [rows,  setRows]  = useState('')   // jumlah baris (kebawah)
+
+  const result = useMemo(() => {
+    const p  = num(prodP)
+    const l  = num(prodL)
+    const g  = num(gap)
+    const c  = Math.max(1, Math.round(num(cols)))
+    const r  = Math.max(1, Math.round(num(rows)))
+    if (p <= 0 || l <= 0) return null
+    // LP = (ukuran produk × jumlah) + (gap × (jumlah - 1))
+    const lpP = (p * c) + (g * (c - 1))
+    const lpL = (l * r) + (g * (r - 1))
+    const total = c * r
+    return { lpP, lpL, total, c, r }
+  }, [prodP, prodL, gap, cols, rows])
+
+  const inp = { padding:'8px 10px', border:`1px solid #E8D5BC`, borderRadius:6, fontSize:14,
+    outline:'none', boxSizing:'border-box', color:'#2C1810', textAlign:'center', width:'100%' }
+  const lbl = { fontSize:11, color:'#9ca3af', marginBottom:4, display:'block' }
+
+  return (
+    <div style={{ background:'#fff', borderRadius:12, padding:20, boxShadow:'0 1px 4px rgba(44,24,16,0.08)', marginBottom:20, border:'1px solid #E8D5BC' }}>
+      <div style={{ fontSize:14, fontWeight:600, color:'#2C1810', marginBottom:16 }}>
+        🔲 Kalkulator Layout LP
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(120px, 1fr))', gap:12, marginBottom:16 }}>
+        <div>
+          <span style={lbl}>Panjang Produk (cm)</span>
+          <input style={inp} type="number" placeholder="cth. 16" value={prodP} onChange={e => setProdP(e.target.value)} />
+        </div>
+        <div>
+          <span style={lbl}>Lebar Produk (cm)</span>
+          <input style={inp} type="number" placeholder="cth. 15" value={prodL} onChange={e => setProdL(e.target.value)} />
+        </div>
+        <div>
+          <span style={lbl}>Gap / Jarak (cm)</span>
+          <input style={inp} type="number" placeholder="0" value={gap} onChange={e => setGap(e.target.value)} />
+        </div>
+        <div>
+          <span style={lbl}>Kolom (kesamping)</span>
+          <input style={inp} type="number" placeholder="cth. 4" value={cols} onChange={e => setCols(e.target.value)} min="1" />
+        </div>
+        <div>
+          <span style={lbl}>Baris (kebawah)</span>
+          <input style={inp} type="number" placeholder="cth. 2" value={rows} onChange={e => setRows(e.target.value)} min="1" />
+        </div>
+      </div>
+
+      {result ? (
+        <div style={{ background:'#FDF6EC', border:'1px solid #E8D5BC', borderRadius:8, padding:'14px 16px' }}>
+          <div style={{ display:'flex', gap:24, flexWrap:'wrap', alignItems:'center' }}>
+            <div>
+              <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Ukuran LP yang dibutuhkan</div>
+              <div style={{ fontSize:22, fontWeight:700, color:'#E8760A' }}>
+                {result.lpP.toFixed(1)} × {result.lpL.toFixed(1)} cm
+              </div>
+            </div>
+            <div style={{ borderLeft:'1px solid #E8D5BC', paddingLeft:24 }}>
+              <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Total per lembar</div>
+              <div style={{ fontSize:22, fontWeight:700, color:'#2C1810' }}>
+                {result.total} pcs
+              </div>
+              <div style={{ fontSize:11, color:'#9ca3af', marginTop:2 }}>
+                {result.c} kolom × {result.r} baris
+              </div>
+            </div>
+          </div>
+          <div style={{ fontSize:11, color:'#9ca3af', marginTop:10 }}>
+            ↓ Gunakan ukuran LP di atas untuk cari plano yang cocok di kalkulator potong kertas di bawah
+          </div>
+        </div>
+      ) : (
+        <div style={{ background:'#f9fafb', borderRadius:8, padding:'12px 16px', fontSize:13, color:'#9ca3af', textAlign:'center' }}>
+          Isi ukuran produk, kolom, dan baris untuk melihat ukuran LP yang dibutuhkan
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Algoritma guillomtine cutting ─────────────────────────────
 // Grid seragam: berapa potongan cw x ch muat di kertas W x H
 function gridFit(W, H, cw, ch) {
@@ -168,6 +254,8 @@ export default function PotongKertas() {
   return (
     <Layout title="Potong Kertas">
       <div style={{ maxWidth:1200, margin:'0 auto' }}>
+        <LayoutCalc />
+
         {lastRequestId && (
           <button
             onClick={() => navigate(`/calculator/${lastRequestId}`)}
@@ -246,4 +334,5 @@ export default function PotongKertas() {
     </Layout>
   )
 }
+
 
