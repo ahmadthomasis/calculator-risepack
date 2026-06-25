@@ -62,6 +62,7 @@ const SECTION_COLS = {
   emboss_laminasi: [
     { label:'Proses',       align:'left',   render: r => r.proses || '—' },
     { label:'Luas Perm.',   align:'center', render: r => r.luas_permukaan || '—' },
+    { label:'Mata',         align:'center', render: r => r.mata || '—' },
     { label:'Qty',          align:'right',  render: r => fmt(r.quantity) },
     { label:'Harga/cm²',   align:'right',  render: r => `Rp ${(r.harga_per_cm2 || 0).toLocaleString('id-ID', { minimumFractionDigits:2, maximumFractionDigits:4 })}` },
     { label:'Harga/pcs',   align:'right',  render: r => idr(r.harga_per_pcs), priceField:'harga_per_pcs' },
@@ -526,4 +527,5 @@ export default function PurchasingReview() {
     </Layout>
   )
 }
+
 
