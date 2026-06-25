@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { HashRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './lib/AuthContext'
 import LoginPage from './pages/LoginPage'
 import SalesDashboard from './pages/SalesDashboard'
@@ -84,13 +84,14 @@ function RoleRouter() {
 
 ReactDOM.createRoot(document.getElementById('root')).render(
   <React.StrictMode>
-    <BrowserRouter basename="/calculator-risepack">
+    <HashRouter>
       <AuthProvider>
         <RoleRouter />
       </AuthProvider>
-    </BrowserRouter>
+    </HashRouter>
   </React.StrictMode>
 )
+
 
 
 
