@@ -126,7 +126,7 @@ export default function PurchasingReview() {
   const [saving,      setSaving]      = useState(false)
   const [savingDraft,  setSavingDraft]  = useState(false)
   const [draftSaved,   setDraftSaved]   = useState(false)
-  const [revisionNote, setRevisionNote] = useState('')
+  // const [revisionNote, setRevisionNote] = useState('') -- aktifkan setelah ALTER TABLE
   const [dbAdditional,setDbAdditional]= useState([])
 
   useEffect(() => { loadAll() }, [quotationId])
@@ -171,7 +171,7 @@ export default function PurchasingReview() {
     setComparisons(compMap)
     setDbAdditional(addlMaster || [])
     setNotes(q.purchasing_notes || '')
-    setRevisionNote(q.revision_note || '')
+    // setRevisionNote(q.revision_note || '') -- aktifkan setelah ALTER TABLE
     setLoading(false)
   }
 
@@ -266,12 +266,12 @@ export default function PurchasingReview() {
     setSavingDraft(true)
     const saved = await saveComparisons()
     if (saved) {
-      // Simpan notes + revision request ke quotations
+      // Simpan notes ke quotations — pakai quotation.id yang sudah di-load
+      // (mungkin berbeda dari URL kalau estimator sudah save ulang)
+      const targetId = quotation?.id || quotationId
       await supabase.from('quotations').update({
         purchasing_notes: notes || null,
-        revision_note: revisionNote || null,
-        needs_revision: revisionNote ? true : false,
-      }).eq('id', quotation.id)
+      }).eq('id', targetId)
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 2500)
     }
@@ -560,21 +560,7 @@ export default function PurchasingReview() {
         />
       </div>
 
-      {/* Box request revisi ke estimator */}
-      <div style={{ background:'#fff', border:`0.5px solid ${C.border}`, borderRadius:10, padding:16, marginBottom:12 }}>
-        <label style={{ fontSize:13, color:'#9ca3af', display:'block', marginBottom:6 }}>
-          📋 Request Revisi ke Estimator <span style={{ fontSize:11, color:'#d1d5db' }}>(opsional)</span>
-        </label>
-        <textarea rows={2} value={revisionNote} onChange={e => setRevisionNote(e.target.value)}
-          placeholder="Tulis item yang perlu ditambah/direvisi oleh estimator, cth: mohon tambahkan biaya QC Rp 50/pcs..."
-          style={{ width:'100%', padding:'9px 12px', border:`1px solid ${revisionNote ? '#f59e0b' : C.border}`, borderRadius:7, fontSize:13, resize:'vertical', boxSizing:'border-box', color:C.dark, outline:'none' }}
-        />
-        {revisionNote && (
-          <div style={{ fontSize:11, color:'#92400e', marginTop:4, background:'#fffbeb', padding:'4px 8px', borderRadius:5 }}>
-            ⚠️ Estimator akan mendapat notifikasi untuk merevisi kalkulasi ini
-          </div>
-        )}
-      </div>
+      {/* Box request revisi ke estimator — aktifkan setelah ALTER TABLE dijalankan */}
 
       {/* Tombol Simpan Draft — bisa disimpan kapan saja tanpa keputusan final */}
       <div style={{ marginBottom:12 }}>
