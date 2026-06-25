@@ -124,9 +124,17 @@ export default function PurchasingReview() {
   const [notes,       setNotes]       = useState('')
   const [loading,     setLoading]     = useState(true)
   const [saving,      setSaving]      = useState(false)
+  const [savingDraft,  setSavingDraft]  = useState(false)
+  const [draftSaved,   setDraftSaved]   = useState(false)
   const [dbAdditional,setDbAdditional]= useState([])
 
   useEffect(() => { loadAll() }, [quotationId])
+
+  // Auto-refresh setiap 30 detik agar purchasing lain bisa lihat update terbaru
+  useEffect(() => {
+    const interval = setInterval(() => { loadAll() }, 30000)
+    return () => clearInterval(interval)
+  }, [quotationId])
 
   async function loadAll() {
     setLoading(true)
@@ -252,6 +260,16 @@ export default function PurchasingReview() {
     return true
   }
 
+  async function saveDraft() {
+    setSavingDraft(true)
+    const saved = await saveComparisons()
+    setSavingDraft(false)
+    if (saved) {
+      setDraftSaved(true)
+      setTimeout(() => setDraftSaved(false), 2500)
+    }
+  }
+
   async function decide(status) {
     if (!hasAtLeastOnePrice || !profile) return
     setSaving(true)
@@ -354,10 +372,19 @@ export default function PurchasingReview() {
         // Hitung subtotal estimator per section
         const estTotal = rows.reduce((sum, r) => sum + (Number(r.subtotal) || 0), 0)
 
+        // Hitung rata-rata harga/pcs estimator per section
+        const priceField = (SECTION_COLS[sec.key] || []).find(c => c.priceField)?.priceField
+        const estPrices = rows.map(r => sec.key === 'additional_cost' ? resolveAdditionalHarga(r) : (Number(r[priceField]) || 0)).filter(v => v > 0)
+        const estAvgPpc = estPrices.length > 0 ? estPrices.reduce((a,b) => a+b, 0) / estPrices.length : 0
+
+        // Hitung rata-rata harga/pcs purchasing per section
+        const filledPurchRows = rows.map((_, i) => comparisons[`${sec.key}-${i}`]).filter(c => c?.purchasing_price != null && c.purchasing_price !== '')
+        const purchAvgPpc = filledPurchRows.length > 0 ? filledPurchRows.reduce((s, c) => s + Number(c.purchasing_price), 0) / filledPurchRows.length : null
+
         // Hitung subtotal purchasing yang sudah diisi per section
         const purchTotal = sectionPurchTotal(sec.key)
-        const sectionDiffPct = (purchTotal != null && estTotal > 0)
-          ? Math.round(((purchTotal - estTotal) / estTotal) * 100)
+        const sectionDiffPct = (purchAvgPpc != null && estAvgPpc > 0)
+          ? Math.round(((purchAvgPpc - estAvgPpc) / estAvgPpc) * 100)
           : null
 
         return (
@@ -365,14 +392,16 @@ export default function PurchasingReview() {
             {/* Section header dengan summary selisih */}
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'10px 14px', borderBottom:`0.5px solid ${C.border}`, background:'#fafaf9' }}>
               <span style={{ fontSize:13, fontWeight:500, color:C.dark }}>{sec.label}</span>
-              <div style={{ display:'flex', gap:16, alignItems:'center', fontSize:12 }}>
+              <div style={{ display:'flex', gap:12, alignItems:'center', fontSize:12, flexWrap:'wrap' }}>
                 <span style={{ color:'#9ca3af' }}>
                   Estimator: <span style={{ color:'#3B6D11', fontWeight:500 }}>{idr(estTotal)}</span>
+                  {estAvgPpc > 0 && <span style={{ color:'#9ca3af', fontWeight:400 }}> · avg {idr(Math.round(estAvgPpc))}/pcs</span>}
                 </span>
-                {purchTotal != null && (
+                {purchTotal != null ? (
                   <>
                     <span style={{ color:'#9ca3af' }}>
                       Purchasing: <span style={{ color:'#185FA5', fontWeight:500 }}>{idr(purchTotal)}</span>
+                      {purchAvgPpc != null && <span style={{ color:'#9ca3af', fontWeight:400 }}> · avg {idr(Math.round(purchAvgPpc))}/pcs</span>}
                     </span>
                     {sectionDiffPct != null && (
                       <span style={{
@@ -384,8 +413,7 @@ export default function PurchasingReview() {
                       </span>
                     )}
                   </>
-                )}
-                {purchTotal == null && (
+                ) : (
                   <span style={{ color:'#9ca3af', fontStyle:'italic' }}>purchasing belum diisi</span>
                 )}
               </div>
@@ -522,6 +550,17 @@ export default function PurchasingReview() {
           placeholder="Tulis catatan untuk Sales/Manager..."
           style={{ width:'100%', padding:'9px 12px', border:`1px solid ${C.border}`, borderRadius:7, fontSize:13, resize:'vertical', boxSizing:'border-box', color:C.dark, outline:'none' }}
         />
+      </div>
+
+      {/* Tombol Simpan Draft — bisa disimpan kapan saja tanpa keputusan final */}
+      <div style={{ marginBottom:12 }}>
+        <button onClick={saveDraft} disabled={savingDraft || !hasAtLeastOnePrice}
+          style={{ width:'100%', padding:12, borderRadius:8, border:`1.5px solid ${hasAtLeastOnePrice ? '#2563eb' : '#d1d5db'}`, fontSize:14, fontWeight:500, cursor: hasAtLeastOnePrice && !savingDraft ? 'pointer' : 'not-allowed', background: hasAtLeastOnePrice ? '#eff6ff' : '#f9fafb', color: hasAtLeastOnePrice ? '#2563eb' : '#9ca3af' }}>
+          {savingDraft ? 'Menyimpan...' : draftSaved ? '✓ Tersimpan' : '💾 Simpan Draft (tanpa keputusan akhir)'}
+        </button>
+        <div style={{ fontSize:11, color:'#9ca3af', textAlign:'center', marginTop:4 }}>
+          Gunakan ini untuk simpan progress dan biarkan rekan melanjutkan validasi
+        </div>
       </div>
 
       {/* Tombol keputusan */}
