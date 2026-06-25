@@ -445,11 +445,12 @@ export default function Calculator() {
       subtotal_raw = Math.max(subtotal_calc, proc.minimum_charge)
       harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
     } else {
-      // Mode Laminasi/Emboss per cm²: (P × L × harga × (qty+insheet)) / qty
+      // Mode Laminasi per cm²: (P × L × harga × (qty+insheet)) / mata / qty
       const parts = String(r.luas_permukaan || '').toLowerCase().split('x')
       const P     = num(parts[0])
       const L     = num(parts[1])
-      const subtotal_calc = P * L * proc.harga * (qty + insheet)
+      const mata  = Math.max(num(r.mata), 1)
+      const subtotal_calc = (P * L * proc.harga * (qty + insheet)) / mata
       subtotal_raw = Math.max(subtotal_calc, proc.minimum_charge)
       harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
     }
@@ -957,7 +958,7 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Qty','Insheet','Luas Perm. / Mata','Harga/pcs','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Qty','Insheet','Luas Permukaan','Mata','Harga/pcs','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {emboss.length === 0 && <tr><td colSpan={9} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
@@ -971,18 +972,21 @@ export default function Calculator() {
                 </td>
                 <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.quantity} onChange={e => updater(setEmboss)(i,'quantity',e.target.value)} /></td>
                 <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setEmboss)(i,'insheet',e.target.value)} /></td>
+                {/* Luas Permukaan: hanya untuk mode per cm² (Laminasi) */}
                 <td style={s.td}>
                   {lookupEmboss(row.proses).per_lembar ? (
-                    // Mode per lembar (Emboss): input Mata
-                    <input style={{ ...s.input, width:70 }} type="number" min="1"
-                      value={row.mata || ''} onChange={e => updater(setEmboss)(i,'mata',e.target.value)}
-                      placeholder="Mata" title="Jumlah mata dari Material Cost" />
+                    <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                   ) : (
-                    // Mode per cm² (Laminasi dll): input Luas Permukaan
                     <input style={{ ...s.input, width:90 }} type="text"
                       value={row.luas_permukaan} onChange={e => updater(setEmboss)(i,'luas_permukaan',e.target.value)}
                       placeholder="20x20" />
                   )}
+                </td>
+                {/* Mata: untuk semua mode */}
+                <td style={s.td}>
+                  <input style={{ ...s.input, width:60 }} type="number" min="1"
+                    value={row.mata || ''} onChange={e => updater(setEmboss)(i,'mata',e.target.value)}
+                    placeholder="1" title="Jumlah mata dari Material Cost" />
                 </td>
                 <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
                 <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setEmboss)(i,'diskon',e.target.value)} placeholder="0" /></td>
