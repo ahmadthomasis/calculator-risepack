@@ -3,14 +3,8 @@
 <head>
   <meta charset="utf-8">
   <title>Risepack Calculator</title>
-  <script>
-    // Simpan path yang dicoba ke sessionStorage, lalu redirect ke root
-    // React Router akan baca ini dan navigasi ke path yang benar
-    var path = window.location.pathname.replace('/calculator-risepack', '')
-    var search = window.location.search
-    sessionStorage.setItem('redirect', path + search)
-    window.location.replace('/calculator-risepack/')
-  </script>
+  <meta http-equiv="refresh" content="0; url=/calculator-risepack/">
+  <script>window.location.replace('/calculator-risepack/')</script>
 </head>
 <body></body>
 </html>
