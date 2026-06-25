@@ -57,7 +57,7 @@ export default function EstimatorQueue() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name, needs_revision, revision_note)')
+      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name)')
       .order('priority', { ascending: false })
       .order('submitted_at', { ascending: true })
     setRequests(data || [])
@@ -230,11 +230,12 @@ export default function EstimatorQueue() {
                       )
                     })()}
                     {(() => {
-                      // Badge "📋 Revisi Purchasing": muncul kalau purchasing minta revisi kalkulasi
+                      // Badge "📋 Revisi Purchasing": muncul kalau purchasing_notes ada
+                      // (needs_revision & revision_note kolom akan ditambah setelah SQL dijalankan)
                       const q = (r.quotations || []).find(qt => !qt.is_draft && qt.is_active)
-                      if (!q?.needs_revision || !q?.revision_note) return null
+                      if (!q?.purchasing_notes) return null
                       return (
-                        <span title={q.revision_note} style={{
+                        <span title={q.purchasing_notes} style={{
                           padding:'2px 8px', borderRadius:12, fontSize:10, fontWeight:600,
                           background:'#EFF6FF', color:'#1D4ED8', border:'1px solid #93C5FD',
                           cursor:'help', animation:'pulseDotEst 1.4s ease-in-out infinite',
