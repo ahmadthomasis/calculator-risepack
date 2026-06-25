@@ -578,7 +578,40 @@ export default function Calculator() {
       return
     }
 
-    // INSERT berhasil — nonaktifkan semua baris lama KECUALI yang baru di-INSERT
+    // INSERT berhasil — ambil data purchasing dari baris lama sebelum dinonaktifkan
+    const { data: oldQuots } = await supabase.from('quotations')
+      .select('id, purchasing_status, purchasing_notes, purchasing_reviewed_at, purchasing_reviewed_by, sent_to_purchasing_at, sent_to_purchasing_by')
+      .eq('request_id', requestId).eq('quantity', activeQty)
+      .eq('is_draft', false).eq('is_active', true).neq('id', inserted.id)
+      .order('updated_at', { ascending: false }).limit(1)
+
+    const oldQuot = oldQuots?.[0]
+
+    // Kalau baris lama punya data purchasing, migrate ke baris baru
+    if (oldQuot?.purchasing_status) {
+      await supabase.from('quotations').update({
+        purchasing_status:      oldQuot.purchasing_status,
+        purchasing_notes:       oldQuot.purchasing_notes,
+        purchasing_reviewed_at: oldQuot.purchasing_reviewed_at,
+        purchasing_reviewed_by: oldQuot.purchasing_reviewed_by,
+        sent_to_purchasing_at:  oldQuot.sent_to_purchasing_at,
+        sent_to_purchasing_by:  oldQuot.sent_to_purchasing_by,
+      }).eq('id', inserted.id)
+
+      // Migrate purchasing_comparisons ke quotation baru
+      const { data: oldComps } = await supabase.from('purchasing_comparisons')
+        .select('*').eq('quotation_id', oldQuot.id)
+      if (oldComps && oldComps.length > 0) {
+        const newComps = oldComps.map(({ id: _id, quotation_id: _qid, ...rest }) => ({
+          ...rest, quotation_id: inserted.id
+        }))
+        // Hapus comparisons lama dulu, insert yang baru
+        await supabase.from('purchasing_comparisons').delete().eq('quotation_id', oldQuot.id)
+        await supabase.from('purchasing_comparisons').insert(newComps)
+      }
+    }
+
+    // Nonaktifkan semua baris lama KECUALI yang baru di-INSERT
     await supabase.from('quotations').update({ is_active: false })
       .eq('request_id', requestId).eq('quantity', activeQty)
       .eq('is_draft', false).neq('id', inserted.id)
