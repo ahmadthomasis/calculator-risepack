@@ -31,7 +31,7 @@ const s = {
 // ── Row factories ─────────────────────────────────────────────
 const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', harga_kg:0, luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
 const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:'', insheet:0, harga_per_lembar:0 })
-const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:'', insheet:0, harga_per_cm2:0 })
+const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:'', insheet:0, harga_per_cm2:0, mata:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1, luas_permukaan:'' })
 const newFinishing = () => ({ id:Date.now(), nama:'', proses:'', spesifik:'', harga_satuan:0 })
 const newAdditional= () => ({ id:Date.now(), nama:'', proses:'', keterangan:'', luas_permukaan:'', gramasi:'', panjang_lem:'', quantity:0, harga:0 })
@@ -359,7 +359,13 @@ export default function Calculator() {
 
   function lookupEmboss(prosesName) {
     const match = dbEmboss.find(m => m.name === prosesName)
-    return match ? { harga: match.price || 0, minimum_charge: match.minimum_charge || 0 } : { harga: 0, minimum_charge: 0 }
+    if (!match) return { harga: 0, minimum_charge: 0, per_lembar: false }
+    return {
+      harga: match.price || 0,
+      minimum_charge: match.minimum_charge || 0,
+      // per_lembar = true kalau unit-nya 'lembar' (Emboss SM 52/74, SM 102)
+      per_lembar: (match.unit || '').toLowerCase() === 'lembar',
+    }
   }
 
   // ── Get unique values from DB ─────────────────────────────
@@ -427,15 +433,27 @@ export default function Calculator() {
     const proc    = lookupEmboss(r.proses)
     const qty     = num(r.quantity)
     const insheet = num(r.insheet)
-    // Parse luas_permukaan format "PxL" dalam cm
-    const parts   = String(r.luas_permukaan || '').toLowerCase().split('x')
-    const P       = num(parts[0])
-    const L       = num(parts[1])
-    // Rumus: (P x L x harga x (qty+insheet)) / qty, minimum dikunci ke minimum_charge
-    const subtotal_calc = (P * L * proc.harga * (qty + insheet))
-    const subtotal_raw = Math.max(subtotal_calc, proc.minimum_charge)
-    const harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
-    const diskon = num(r.diskon)
+    const diskon  = num(r.diskon)
+    let subtotal_raw, harga_per_pcs_raw
+
+    if (proc.per_lembar) {
+      // Mode Emboss: harga per lembar / mata
+      // Rumus: (harga / mata) × qty, minimum = minimum_charge
+      const mata = Math.max(num(r.mata), 1)
+      const harga_per_pcs_calc = proc.harga / mata
+      const subtotal_calc = harga_per_pcs_calc * qty
+      subtotal_raw = Math.max(subtotal_calc, proc.minimum_charge)
+      harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
+    } else {
+      // Mode Laminasi/Emboss per cm²: (P × L × harga × (qty+insheet)) / qty
+      const parts = String(r.luas_permukaan || '').toLowerCase().split('x')
+      const P     = num(parts[0])
+      const L     = num(parts[1])
+      const subtotal_calc = P * L * proc.harga * (qty + insheet)
+      subtotal_raw = Math.max(subtotal_calc, proc.minimum_charge)
+      harga_per_pcs_raw = qty > 0 ? subtotal_raw / qty : 0
+    }
+
     const subtotal = subtotal_raw * (1 - diskon/100)
     const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
     return { ...r, harga_per_cm2: proc.harga, minimum_charge: proc.minimum_charge, harga_per_pcs, subtotal_raw, subtotal }
@@ -939,7 +957,7 @@ export default function Calculator() {
         </div>
         <table style={{ width:'100%', borderCollapse:'collapse' }}>
           <thead><tr>
-            {['Nama','Proses','Qty','Insheet','Luas Permukaan','Harga/pcs','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
+            {['Nama','Proses','Qty','Insheet','Luas Perm. / Mata','Harga/pcs','Diskon%','Subtotal',''].map(h=><th key={h} style={s.th}>{h}</th>)}
           </tr></thead>
           <tbody>
             {emboss.length === 0 && <tr><td colSpan={9} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
@@ -953,7 +971,19 @@ export default function Calculator() {
                 </td>
                 <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.quantity} onChange={e => updater(setEmboss)(i,'quantity',e.target.value)} /></td>
                 <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setEmboss)(i,'insheet',e.target.value)} /></td>
-                <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setEmboss)(i,'luas_permukaan',e.target.value)} placeholder="20x20" /></td>
+                <td style={s.td}>
+                  {lookupEmboss(row.proses).per_lembar ? (
+                    // Mode per lembar (Emboss): input Mata
+                    <input style={{ ...s.input, width:70 }} type="number" min="1"
+                      value={row.mata || ''} onChange={e => updater(setEmboss)(i,'mata',e.target.value)}
+                      placeholder="Mata" title="Jumlah mata dari Material Cost" />
+                  ) : (
+                    // Mode per cm² (Laminasi dll): input Luas Permukaan
+                    <input style={{ ...s.input, width:90 }} type="text"
+                      value={row.luas_permukaan} onChange={e => updater(setEmboss)(i,'luas_permukaan',e.target.value)}
+                      placeholder="20x20" />
+                  )}
+                </td>
                 <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
                 <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setEmboss)(i,'diskon',e.target.value)} placeholder="0" /></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
@@ -1150,6 +1180,7 @@ export default function Calculator() {
     </Layout>
   )
 }
+
 
 
 
