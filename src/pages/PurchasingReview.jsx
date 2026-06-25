@@ -130,8 +130,23 @@ export default function PurchasingReview() {
 
   async function loadAll() {
     setLoading(true)
-    const { data: q } = await supabase.from('quotations').select('*').eq('id', quotationId).maybeSingle()
+    let { data: q } = await supabase.from('quotations').select('*').eq('id', quotationId).maybeSingle()
     if (!q) { setLoading(false); return }
+
+    // Kalau quotation ini sudah tidak aktif (estimator simpan ulang),
+    // cari versi terbaru yang is_active=true untuk request+qty yang sama
+    if (!q.is_active) {
+      const { data: latest } = await supabase.from('quotations')
+        .select('*')
+        .eq('request_id', q.request_id)
+        .eq('quantity', q.quantity)
+        .eq('is_active', true)
+        .eq('is_draft', false)
+        .order('updated_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      if (latest) q = latest
+    }
     const { data: req } = await supabase.from('requests').select('*').eq('id', q.request_id).maybeSingle()
     const { data: comps } = await supabase.from('purchasing_comparisons').select('*').eq('quotation_id', quotationId)
     const { data: addlMaster } = await supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional')
