@@ -29,7 +29,55 @@ const s = {
 }
 
 // ── Row factories ─────────────────────────────────────────────
-const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', harga_kg:0, luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0 })
+// ── Tabel P11 Corrugated (harga Rp/m², sudah include PPN 11%) ─────────────
+const P11_SUBSTANCES = ['M125','K125','K150','K200','K275','WK150','WK200']
+const P11_FLUTES = ['E Flute','B Flute','C Flute','DW']
+
+const P11_TABLE = {
+  // [substance_outer, substance_mid, substance_inner]: { 'E Flute': x, 'B Flute': x, ... }
+  'M125-M125-M125': { 'E Flute':4524, 'B Flute':4322, 'C Flute':4420, 'DW':7318 },
+  'K125-M125-M125': { 'E Flute':4652, 'B Flute':4450, 'C Flute':4549, 'DW':7446 },
+  'K125-M125-K125': { 'E Flute':4780, 'B Flute':4578, 'C Flute':4677, 'DW':7575 },
+  'K150-M125-M125': { 'E Flute':4875, 'B Flute':4673, 'C Flute':4772, 'DW':7669 },
+  'K150-M125-K125': { 'E Flute':5003, 'B Flute':4801, 'C Flute':4900, 'DW':7798 },
+  'K150-M125-K150': { 'E Flute':5226, 'B Flute':5024, 'C Flute':5123, 'DW':8020 },
+  'K200-M125-M125': { 'E Flute':5518, 'B Flute':5316, 'C Flute':5418, 'DW':8427 },
+  'K200-M125-K125': { 'E Flute':5651, 'B Flute':5449, 'C Flute':5551, 'DW':8560 },
+  'K200-M125-K150': { 'E Flute':5882, 'B Flute':5680, 'C Flute':5783, 'DW':8792 },
+  'K200-M125-K200': { 'E Flute':6345, 'B Flute':6143, 'C Flute':6245, 'DW':9254 },
+  'K275-M125-M125': { 'E Flute':6789, 'B Flute':6587, 'C Flute':6694, 'DW':9814 },
+  'K275-M125-K125': { 'E Flute':6928, 'B Flute':6727, 'C Flute':6833, 'DW':9953 },
+  'K275-M125-K150': { 'E Flute':7168, 'B Flute':6966, 'C Flute':7073, 'DW':10193 },
+  'K275-M125-K200': { 'E Flute':7648, 'B Flute':7446, 'C Flute':7552, 'DW':10673 },
+  'K275-M125-K275': { 'E Flute':9027, 'B Flute':8826, 'C Flute':8936, 'DW':12168 },
+  'WK150-M125-M125': { 'E Flute':5402, 'B Flute':5200, 'C Flute':5302, 'DW':8311 },
+  'WK150-M125-K125': { 'E Flute':5535, 'B Flute':5333, 'C Flute':5436, 'DW':8445 },
+  'WK150-M125-K150': { 'E Flute':5767, 'B Flute':5565, 'C Flute':5667, 'DW':8676 },
+  'WK150-M125-K200': { 'E Flute':6229, 'B Flute':6027, 'C Flute':6130, 'DW':9139 },
+  'WK150-M125-WK150': { 'E Flute':6552, 'B Flute':6350, 'C Flute':6460, 'DW':9692 },
+  'WK150-M125-K275': { 'E Flute':7528, 'B Flute':7326, 'C Flute':7432, 'DW':10553 },
+  'WK200-M125-M125': { 'E Flute':5980, 'B Flute':5778, 'C Flute':5881, 'DW':8890 },
+  'WK200-M125-K125': { 'E Flute':6114, 'B Flute':5912, 'C Flute':6014, 'DW':9023 },
+  'WK200-M125-K150': { 'E Flute':6345, 'B Flute':6143, 'C Flute':6245, 'DW':9254 },
+  'WK200-M125-K200': { 'E Flute':6808, 'B Flute':6607, 'C Flute':6708, 'DW':9718 },
+  'WK200-M125-K275': { 'E Flute':8128, 'B Flute':7926, 'C Flute':8032, 'DW':11153 },
+  'WK200-M125-WK150': { 'E Flute':7173, 'B Flute':6971, 'C Flute':7081, 'DW':10313 },
+  'WK200-M125-WK200': { 'E Flute':7794, 'B Flute':7592, 'C Flute':7702, 'DW':10985 },
+}
+
+function getP11Price(outer, flute) {
+  // Key: outer-M125-outer (karena mid selalu M125 di tabel)
+  const key = `${outer}-M125-${outer}`
+  const row = P11_TABLE[key]
+  return row ? (row[flute] || 0) : 0
+}
+
+function lookupP11(substance_key, flute) {
+  const row = P11_TABLE[substance_key]
+  return row ? (row[flute] || 0) : 0
+}
+
+const newMaterial  = () => ({ id:Date.now(), nama:'', material:'', gsm:'', plano:'79x109', plano_w:'', plano_h:'', harga_kg:0, luas_permukaan:'', mata:1, plano_get:'', insheet:'', quantity:0, harga_lembar:0, harga_per_pcs:0, is_corrugated:false, corr_substance:'K150-M125-K150', corr_flute:'B Flute', corr_p_mm:'', corr_l_mm:'' })
 const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 warna', quantity:0, luas_permukaan:'', insheet:0, harga_per_lembar:0 })
 const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:'', insheet:0, harga_per_cm2:0, mata:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1, luas_permukaan:'' })
@@ -385,12 +433,29 @@ export default function Calculator() {
 
   // ── Kalkulasi per row ─────────────────────────────────────
   const calcMaterial = useCallback(() => material.map(r => {
-    const planoGet     = num(r.plano_get)
-    const insheet      = num(r.insheet)
-    const quantity     = num(r.quantity)
-    const mata         = num(r.mata) || 1
-    const isBusa       = r.material && r.material.toLowerCase().includes('busa')
-    // Harga/lembar: busa → ketebalan x rate_per_cm; custom plano → harga/kg; lainnya → DB
+    const quantity = num(r.quantity)
+    const diskon   = num(r.diskon)
+
+    // ── Mode Corrugated ──────────────────────────────────────
+    if (r.is_corrugated) {
+      const P_mm = num(r.corr_p_mm)
+      const L_mm = num(r.corr_l_mm)
+      const harga_m2 = lookupP11(r.corr_substance || 'K150-M125-K150', r.corr_flute || 'B Flute')
+      // Rumus: P(mm) × L(mm) / 1.000.000 × harga_m2 × 1.05
+      const harga_per_pcs_raw = P_mm > 0 && L_mm > 0
+        ? (P_mm * L_mm / 1000000) * harga_m2 * 1.05
+        : 0
+      const subtotal_raw = harga_per_pcs_raw * quantity
+      const subtotal = subtotal_raw * (1 - diskon/100)
+      const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
+      return { ...r, harga_lembar: harga_m2, harga_per_pcs, subtotal_raw, subtotal }
+    }
+
+    // ── Mode Normal (offset) ─────────────────────────────────
+    const planoGet = num(r.plano_get)
+    const insheet  = num(r.insheet)
+    const mata     = num(r.mata) || 1
+    const isBusa   = r.material && r.material.toLowerCase().includes('busa')
     let harga
     if (isBusa) {
       const matchBusa = dbMaterials.find(m => m.name === r.material)
@@ -401,12 +466,10 @@ export default function Calculator() {
     } else {
       harga = lookupMaterialPrice(r.material, r.plano, r.gsm)
     }
-    // Rumus: ((qty + insheet) / plano_get / mata * harga) / qty
     const harga_per_pcs_raw = (planoGet > 0 && quantity > 0 && insheet > 0)
       ? ((quantity + insheet) / planoGet / mata * harga) / quantity
       : 0
     const subtotal_raw = harga_per_pcs_raw * quantity
-    const diskon = num(r.diskon)
     const subtotal = subtotal_raw * (1 - diskon/100)
     const harga_per_pcs = harga_per_pcs_raw * (1 - diskon/100)
     return { ...r, harga_lembar: harga, harga_per_pcs, subtotal_raw, subtotal }
@@ -873,8 +936,30 @@ export default function Calculator() {
               {material.length === 0 && <tr><td colSpan={14} style={{ padding:20, textAlign:'center', color:'#d1d5db', fontSize:13 }}>Klik "+ Tambah Baris"</td></tr>}
               {matCalc.map((row, i) => (
                 <tr key={row.id}>
-                  <td style={s.td}><input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setMaterial)(i,'nama',e.target.value)} placeholder="cover" /></td>
                   <td style={s.td}>
+                    <input style={{ ...s.input, width:90 }} value={row.nama} onChange={e => updater(setMaterial)(i,'nama',e.target.value)} placeholder="cover" />
+                    <div style={{ marginTop:3 }}>
+                      <label style={{ fontSize:10, color:'#9ca3af', cursor:'pointer', display:'flex', alignItems:'center', gap:3 }}>
+                        <input type="checkbox" checked={!!row.is_corrugated}
+                          onChange={e => updater(setMaterial)(i,'is_corrugated', e.target.checked)}
+                          style={{ width:11, height:11 }} />
+                        Corrugated
+                      </label>
+                    </div>
+                  </td>
+                  <td style={s.td}>
+                    {row.is_corrugated ? (
+                      <div style={{ display:'flex', flexDirection:'column', gap:3 }}>
+                        <select style={{ ...s.select, width:160, fontSize:11 }} value={row.corr_substance || 'K150-M125-K150'}
+                          onChange={e => updater(setMaterial)(i,'corr_substance',e.target.value)}>
+                          {Object.keys(P11_TABLE).map(k => <option key={k} value={k}>{k}</option>)}
+                        </select>
+                        <select style={{ ...s.select, width:160, fontSize:11 }} value={row.corr_flute || 'B Flute'}
+                          onChange={e => updater(setMaterial)(i,'corr_flute',e.target.value)}>
+                          {P11_FLUTES.map(f => <option key={f} value={f}>{f}</option>)}
+                        </select>
+                      </div>
+                    ) : (
                     <select style={{ ...s.select, width:160 }} value={row.material}
                       onChange={e => {
                         const val = e.target.value
@@ -884,9 +969,13 @@ export default function Calculator() {
                       <option value="">-- pilih --</option>
                       {materialNames.map(n => <option key={n}>{n}</option>)}
                     </select>
+                    )}
                   </td>
+                  {/* GSM — corrugated: tampilkan harga/m² dari P11 */}
                   <td style={s.td}>
-                    {(row.plano === 'custom' || (row.material && row.material.toLowerCase().includes('busa'))) ? (
+                    {row.is_corrugated ? (
+                      <div style={{ ...s.calc, fontSize:11 }}>{lookupP11(row.corr_substance||'K150-M125-K150', row.corr_flute||'B Flute').toLocaleString('id-ID')}</div>
+                    ) : (row.plano === 'custom' || (row.material && row.material.toLowerCase().includes('busa'))) ? (
                       <input style={{ ...s.input, width:80 }} type="number" step="0.1" value={row.gsm} onChange={e => updater(setMaterial)(i,'gsm',e.target.value)} placeholder={row.material && row.material.toLowerCase().includes('busa') ? 'tebal(cm)' : 'GSM'} />
                     ) : (
                       <select style={{ ...s.select, width:80 }} value={row.gsm}
@@ -901,8 +990,14 @@ export default function Calculator() {
                       </select>
                     )}
                   </td>
+                  {/* Plano — corrugated: input P(mm) x L(mm) */}
                   <td style={s.td}>
-                    {(row.material && row.material.toLowerCase().includes('busa')) ? (
+                    {row.is_corrugated ? (
+                      <div style={{ display:'flex', gap:3 }}>
+                        <input style={{ ...s.input, width:55 }} type="number" value={row.corr_p_mm||''} onChange={e => updater(setMaterial)(i,'corr_p_mm',e.target.value)} placeholder="P(mm)" />
+                        <input style={{ ...s.input, width:55 }} type="number" value={row.corr_l_mm||''} onChange={e => updater(setMaterial)(i,'corr_l_mm',e.target.value)} placeholder="L(mm)" />
+                      </div>
+                    ) : (row.material && row.material.toLowerCase().includes('busa')) ? (
                       <div style={s.calc}>120x200</div>
                     ) : row.plano === 'custom' ? (
                       <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
@@ -920,11 +1015,12 @@ export default function Calculator() {
                       </select>
                     )}
                   </td>
-                  <td style={s.td}><input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setMaterial)(i,'luas_permukaan',e.target.value)} placeholder="30x40" /></td>
-                  <td style={s.td}><input style={{ ...s.input, width:60 }} type="number" min="1" value={row.mata||1} onChange={e => updater(setMaterial)(i,'mata',e.target.value)} placeholder="1" /></td>
-                  <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.plano_get} onChange={e => updater(setMaterial)(i,'plano_get',e.target.value)} placeholder="1" /></td>
+                  {/* Luas Permukaan, Mata, Plano Get, Insheet — kosong untuk corrugated */}
+                  <td style={s.td}>{row.is_corrugated ? <span style={{color:'#d1d5db'}}>—</span> : <input style={{ ...s.input, width:90 }} type="text" value={row.luas_permukaan} onChange={e => updater(setMaterial)(i,'luas_permukaan',e.target.value)} placeholder="30x40" />}</td>
+                  <td style={s.td}>{row.is_corrugated ? <span style={{color:'#d1d5db'}}>—</span> : <input style={{ ...s.input, width:60 }} type="number" min="1" value={row.mata||1} onChange={e => updater(setMaterial)(i,'mata',e.target.value)} placeholder="1" />}</td>
+                  <td style={s.td}>{row.is_corrugated ? <span style={{color:'#d1d5db'}}>—</span> : <input style={{ ...s.input, width:80 }} type="number" value={row.plano_get} onChange={e => updater(setMaterial)(i,'plano_get',e.target.value)} placeholder="1" />}</td>
                   <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.quantity} onChange={e => updater(setMaterial)(i,'quantity',e.target.value)} /></td>
-                  <td style={s.td}><input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setMaterial)(i,'insheet',e.target.value)} placeholder="500" /></td>
+                  <td style={s.td}>{row.is_corrugated ? <span style={{color:'#d1d5db'}}>—</span> : <input style={{ ...s.input, width:80 }} type="number" value={row.insheet} onChange={e => updater(setMaterial)(i,'insheet',e.target.value)} placeholder="500" />}</td>
                   <td style={s.td}><div style={{ ...s.calc, color: row.harga_lembar > 0 ? '#16a34a' : '#9ca3af' }}>{row.harga_lembar > 0 ? idr(row.harga_lembar) : '—'}</div></td>
                   <td style={s.td}><div style={s.calcGreen}>{row.harga_per_pcs > 0 ? idr(row.harga_per_pcs) : '—'}</div></td>
                   <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setMaterial)(i,'diskon',e.target.value)} placeholder="0" /></td>
