@@ -27,6 +27,7 @@ export default function EstimatorQueue() {
   const [filter, setFilter]     = useState('all')
   const [pulse, setPulse]       = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [salesFilter, setSalesFilter] = useState('all')
   const [lastSeen] = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
 
   useEffect(() => {
@@ -79,8 +80,11 @@ export default function EstimatorQueue() {
     await supabase.from('requests').update({ status:'cancelled' }).eq('id', id)
   }
 
+  const salesList = [...new Set(requests.map(r => r.profiles?.full_name).filter(Boolean))].sort()
+
   const filtered = (filter === 'all' ? requests : requests.filter(r => r.status === filter))
     .filter(r => !searchTerm.trim() || (r.customer_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase()))
+    .filter(r => salesFilter === 'all' || r.profiles?.full_name === salesFilter)
   const counts   = { all: requests.length, pending: 0, in_progress: 0, done: 0 }
   requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })
 
@@ -125,13 +129,25 @@ export default function EstimatorQueue() {
             }}>{label} <span style={{ opacity:0.7 }}>({counts[val] ?? 0})</span></button>
           ))}
         </div>
-        <input
-          type="text"
-          placeholder="Cari nama customer..."
-          value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, width:220, outline:'none' }}
-        />
+        <div style={{ display:'flex', gap:8 }}>
+          <select
+            value={salesFilter}
+            onChange={e => setSalesFilter(e.target.value)}
+            style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, outline:'none', background:'#fff', color: salesFilter === 'all' ? '#6b7280' : '#1d4ed8', fontWeight: salesFilter === 'all' ? 400 : 600, cursor:'pointer' }}
+          >
+            <option value="all">Semua Sales</option>
+            {salesList.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+          <input
+            type="text"
+            placeholder="Cari nama customer..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, width:220, outline:'none' }}
+          />
+        </div>
       </div>
 
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>{filtered.length} total</div>
@@ -308,6 +324,7 @@ export default function EstimatorQueue() {
     </Layout>
   )
 }
+
 
 
 
