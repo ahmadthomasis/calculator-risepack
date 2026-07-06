@@ -1,7 +1,7 @@
 import { useAuth } from '../lib/AuthContext'
 import { useNavigate, useLocation } from 'react-router-dom'
 
-const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing', prodev:'Prodev' }
+const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing', prodev:'Prodev', sample_maker:'Sample Maker' }
 const C = {
   dark:   '#2C1810',
   orange: '#E8760A',

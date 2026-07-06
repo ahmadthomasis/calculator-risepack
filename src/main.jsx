@@ -64,6 +64,14 @@ function RoleRouter() {
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
+      {profile.role === 'sample_maker' && (
+        <>
+          <Route path="/" element={<ProdevQueue />} />
+          <Route path="/potong-kertas" element={<PotongKertas />} />
+          <Route path="/directory" element={<DirectoryHarga />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </>
+      )}
       {profile.role === 'estimator' && (
         <>
           <Route path="/" element={<EstimatorQueue />} />
