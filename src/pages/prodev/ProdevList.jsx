@@ -157,6 +157,7 @@ export default function ProdevList() {
                     <td style={{ ...s.td, fontWeight:600 }}>
                       {o.customer_name}
                       {o.nama_customer && <div style={{ fontSize:11, color:C.brown, fontWeight:500 }}>{o.nama_customer}</div>}
+                      {o.revisi_ke > 0 && <div style={{ marginTop:3 }}><span style={{ ...s.badge('#7c3aed'), fontSize:10 }} title={o.keterangan_revisi || ''}>Revisi {o.revisi_ke}</span></div>}
                     </td>
                     <td style={s.td}>{o.brand_name || '—'}<div style={{ fontSize:11, color:'#9ca3af' }}>{o.jenis_kemasan}{o.model_layout ? ` · ${o.model_layout}` : ''}</div></td>
                     <td style={{ ...s.td, whiteSpace:'nowrap' }}>{fmtDate(o.deadline)}</td>
@@ -184,11 +185,10 @@ export default function ProdevList() {
                         {[0,1,2,3,4,5].map(n => <option key={n} value={n}>{n === 0 ? '—' : `Rev${n}`}</option>)}
                       </select>
                     </td>
-                    <td style={s.td}>
-                      <select style={s.selectMini} value={o.revisi_prodev} disabled={!editable || busy}
-                        onChange={e => updateField(o.id, 'revisi_prodev', parseInt(e.target.value))}>
-                        {[0,1,2,3,4,5].map(n => <option key={n} value={n}>{n === 0 ? '—' : `Rev${n}`}</option>)}
-                      </select>
+                    <td style={{ ...s.td, textAlign:'center' }} title="Diisi oleh sample maker saat mengembalikan layout">
+                      {o.revisi_prodev > 0
+                        ? <span style={s.badge('#c2410c')}>Rev{o.revisi_prodev}</span>
+                        : <span style={{ color:'#d1d5db' }}>—</span>}
                     </td>
                     <td style={s.td}>
                       <select style={s.selectMini} value={o.tingkat_kepuasan || ''} disabled={!editable || busy}
@@ -224,8 +224,15 @@ export default function ProdevList() {
                       {profile?.role !== 'manager' && !o.tanggal_selesai_layout && (
                         <>
                           <button onClick={() => navigate(`/prodev/edit/${o.id}`)} style={{ padding:'4px 10px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', color:C.brown, marginRight:6 }}>Edit</button>
-                          <button onClick={() => deleteOrder(o)} style={{ padding:'4px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626' }}>Hapus</button>
+                          <button onClick={() => deleteOrder(o)} style={{ padding:'4px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626', marginRight:6 }}>Hapus</button>
                         </>
+                      )}
+                      {profile?.role !== 'manager' && o.revisi_konsumen > 0 && (
+                        <button onClick={() => navigate(`/prodev/revisi/${o.id}`)}
+                          title="Buat FPS baru untuk revisi konsumen (isian ter-copy dari order ini)"
+                          style={{ padding:'4px 10px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:6, fontSize:12, cursor:'pointer', color:'#7c3aed', fontWeight:600 }}>
+                          ⟳ FPS Ulang · Revisi {(o.revisi_ke || 0) + 1}
+                        </button>
                       )}
                     </td>
                   </tr>

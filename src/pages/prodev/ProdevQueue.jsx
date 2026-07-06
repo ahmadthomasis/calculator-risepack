@@ -56,6 +56,23 @@ function DetailModal({ order: o, names, onClose, onUploadResult, onDeleteFile, u
           <button onClick={onClose} style={{ marginLeft:'auto', ...s.btnGhost }}>Tutup ✕</button>
         </div>
 
+        {(o.revisi_ke > 0 || (o.revisi_prodev > 0 && o.catatan_revisi_prodev)) && (
+          <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:8 }}>
+            {o.revisi_ke > 0 && (
+              <div style={{ background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:8, padding:'10px 12px' }}>
+                <span style={s.badge('#7c3aed')}>Revisi Konsumen {o.revisi_ke}</span>
+                <div style={{ fontSize:13, color:C.dark, marginTop:6, whiteSpace:'pre-wrap' }}>{o.keterangan_revisi || '— tanpa keterangan —'}</div>
+              </div>
+            )}
+            {o.revisi_prodev > 0 && o.catatan_revisi_prodev && (
+              <div style={{ background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:8, padding:'10px 12px' }}>
+                <span style={s.badge('#c2410c')}>⚠ Revisi Prodev {o.revisi_prodev}</span>
+                <div style={{ fontSize:13, color:C.dark, marginTop:6, whiteSpace:'pre-wrap' }}>{o.catatan_revisi_prodev}</div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div style={{ fontSize:13, fontWeight:700, color:C.orange, margin:'14px 0 4px' }}>INFORMASI KONSUMEN</div>
         <Row k="Nama Perusahaan" v={o.customer_name} />
         <Row k="Nama Customer" v={o.nama_customer} />
@@ -224,6 +241,21 @@ export default function ProdevQueue() {
     setBusyId(null)
   }
 
+  // ── Aksi sample maker: layout salah → balikkan ke prodev (Proses Layout) ──
+  async function revisiProdev(o) {
+    const note = prompt('Catatan revisi untuk layouter (apa yang salah pada layout?):', o.catatan_revisi_prodev || '')
+    if (note === null) return                     // batal
+    if (!note.trim()) { alert('Catatan revisi wajib diisi supaya layouter tahu yang harus diperbaiki.'); return }
+    setBusyId(o.id)
+    const { error } = await supabase.from('prodev_orders').update({
+      tanggal_selesai_layout: null,               // → status kembali ke 'layout'
+      revisi_prodev: (o.revisi_prodev || 0) + 1,
+      catatan_revisi_prodev: note.trim(),
+    }).eq('id', o.id)
+    if (error) alert('Gagal: ' + error.message)
+    setBusyId(null)
+  }
+
   // Koreksi kalau salah klik (hanya sebelum tahap berikutnya jalan)
   async function batalkanTanggal(o, field) {
     if (!confirm('Kosongkan kembali tanggal ini?')) return
@@ -355,7 +387,14 @@ export default function ProdevQueue() {
                       {o.nama_customer && <div style={{ fontSize:11, color:C.brown, fontWeight:500 }}>{o.nama_customer}</div>}
                       {o.kode_order && <div style={{ fontSize:10.5, color:'#9ca3af' }}>{o.kode_order}</div>}
                     </td>
-                    <td style={s.td}>{o.brand_name || '—'}<div style={{ fontSize:11, color:'#9ca3af' }}>{o.jenis_kemasan}{o.model_layout ? ` · ${o.model_layout}` : ''}</div></td>
+                    <td style={s.td}>
+                      {o.brand_name || '—'}
+                      <div style={{ fontSize:11, color:'#9ca3af' }}>{o.jenis_kemasan}{o.model_layout ? ` · ${o.model_layout}` : ''}</div>
+                      <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:3 }}>
+                        {o.revisi_ke > 0 && <span style={{ ...s.badge('#7c3aed'), fontSize:10 }}>Revisi {o.revisi_ke}</span>}
+                        {o.revisi_prodev > 0 && st === 'layout' && <span style={{ ...s.badge('#c2410c'), fontSize:10 }} title={o.catatan_revisi_prodev || ''}>⚠ Revisi Prodev {o.revisi_prodev}</span>}
+                      </div>
+                    </td>
                     <td style={s.td}>{names[o.created_by] || '—'}</td>
                     <td style={{ ...s.td, whiteSpace:'nowrap', color: lewat ? '#dc2626' : C.dark, fontWeight: lewat ? 600 : 400 }}>{fmtDate(o.deadline)}</td>
                     <td style={s.td}>{names[o.layouter_id] || '—'}</td>
@@ -396,8 +435,9 @@ export default function ProdevQueue() {
                       {isSampleMaker && st === 'rakit' && (
                         <>
                           <button style={{ ...s.btnGreen, marginRight:6 }} disabled={busy} onClick={() => selesaiRakit(o)}>Rakit Selesai</button>
-                          <button style={s.btnGhost} disabled={busy} title="Kosongkan tanggal selesai layout (salah klik)"
-                            onClick={() => batalkanTanggal(o, 'tanggal_selesai_layout')}>↩</button>
+                          <button style={{ ...s.btnGhost, color:'#c2410c', borderColor:'#fed7aa', marginRight:6 }} disabled={busy}
+                            title="Layout salah — kembalikan ke layouter untuk diperbaiki"
+                            onClick={() => revisiProdev(o)}>↩ Revisi Prodev</button>
                         </>
                       )}
                       {isSampleMaker && (st === 'terima') && (
