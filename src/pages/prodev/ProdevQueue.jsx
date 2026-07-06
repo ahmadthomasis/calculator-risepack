@@ -31,7 +31,7 @@ function Stat({ label, value, color }) {
 }
 
 // ── Modal detail order ────────────────────────────────────────────────────────
-function DetailModal({ order: o, names, onClose, onUploadResult, onDeleteFile, uploadingResult, isManager }) {
+function DetailModal({ order: o, names, onClose, onUploadResult, onDeleteFile, uploadingResult, isLayouter }) {
   const resultRef = useRef()
   if (!o) return null
   const st = deriveStatus(o)
@@ -127,12 +127,12 @@ function DetailModal({ order: o, names, onClose, onUploadResult, onDeleteFile, u
               <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 11px', background:'#f0fdf4', borderRadius:7, border:'1px solid #bbf7d0' }}>
                 <span style={{ fontSize:12.5, color:C.dark, flex:1, wordBreak:'break-all' }}>✅ {f.name}</span>
                 <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize:12, color:'#2563eb' }}>Buka ↗</a>
-                {!isManager && <button onClick={() => onDeleteFile(o, 'layout_result_files', i)} style={{ ...s.btnGhost, color:'#dc2626', borderColor:'#fecaca', padding:'4px 8px' }}>✕</button>}
+                {isLayouter && <button onClick={() => onDeleteFile(o, 'layout_result_files', i)} style={{ ...s.btnGhost, color:'#dc2626', borderColor:'#fecaca', padding:'4px 8px' }}>✕</button>}
               </div>
             ))}
           </div>
         )}
-        {!isManager && st === 'layout' && (
+        {isLayouter && st === 'layout' && (
           <div>
             <button disabled={uploadingResult} onClick={() => resultRef.current?.click()} style={{ ...s.btnBlue, opacity: uploadingResult ? 0.6 : 1 }}>
               {uploadingResult ? 'Mengunggah...' : '+ Upload Hasil Layout'}
@@ -286,7 +286,9 @@ export default function ProdevQueue() {
     .filter(o => typeFilter === 'all' || o.form_type === typeFilter)
     .filter(o => !mineOnly || o.layouter_id === profile?.id || o.sample_maker_id === profile?.id)
 
-  const isManager = profile?.role === 'manager'
+  const isManager     = profile?.role === 'manager'
+  const isLayouter    = profile?.role === 'prodev'
+  const isSampleMaker = profile?.role === 'sample_maker'
 
   return (
     <Layout title="Antrian Prodev">
@@ -372,7 +374,7 @@ export default function ProdevQueue() {
                     </td>
                     <td style={s.td}>
                       {o.form_type === 'fsa' ? (
-                        <select disabled={isManager || busy} value={o.status_dummy_final || ''}
+                        <select disabled={!isSampleMaker || busy} value={o.status_dummy_final || ''}
                           onChange={e => setDummyFinal(o, e.target.value)}
                           style={{ padding:'4px 6px', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, outline:'none', background:'#fff', color: o.status_dummy_final ? '#1251A3' : C.dark, fontWeight: o.status_dummy_final ? 600 : 400 }}>
                           <option value="">Belum</option>
@@ -382,7 +384,7 @@ export default function ProdevQueue() {
                     </td>
                     <td style={{ ...s.td, whiteSpace:'nowrap' }}>
                       <button style={{ ...s.btnGhost, marginRight:6 }} onClick={() => setDetailId(o.id)}>Detail</button>
-                      {!isManager && st === 'layout' && (
+                      {isLayouter && st === 'layout' && (
                         <>
                           <a href={templateUrlFor(o)} target="_blank" rel="noreferrer" title="Buka template dieline di Pacdora"
                             style={{ ...s.btnGhost, textDecoration:'none', marginRight:6, borderColor:'#c4b5fd', color:'#6d28d9' }}>🎨 Template ↗</a>
@@ -391,14 +393,14 @@ export default function ProdevQueue() {
                             onClick={() => selesaiLayout(o)}>Layout Selesai</button>
                         </>
                       )}
-                      {!isManager && st === 'rakit' && (
+                      {isSampleMaker && st === 'rakit' && (
                         <>
                           <button style={{ ...s.btnGreen, marginRight:6 }} disabled={busy} onClick={() => selesaiRakit(o)}>Rakit Selesai</button>
                           <button style={s.btnGhost} disabled={busy} title="Kosongkan tanggal selesai layout (salah klik)"
                             onClick={() => batalkanTanggal(o, 'tanggal_selesai_layout')}>↩</button>
                         </>
                       )}
-                      {!isManager && (st === 'terima') && (
+                      {isSampleMaker && (st === 'terima') && (
                         <button style={s.btnGhost} disabled={busy} title="Kosongkan tanggal selesai rakit (salah klik)"
                           onClick={() => batalkanTanggal(o, 'tanggal_selesai_rakit')}>↩</button>
                       )}
@@ -414,7 +416,7 @@ export default function ProdevQueue() {
       <DetailModal
         order={orders.find(o => o.id === detailId) || null}
         names={names}
-        isManager={isManager}
+        isLayouter={isLayouter}
         uploadingResult={uploadingResult}
         onUploadResult={uploadResult}
         onDeleteFile={deleteFile}

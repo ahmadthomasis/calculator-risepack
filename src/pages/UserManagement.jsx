@@ -16,7 +16,7 @@ const s = {
   btnDanger:{ padding:'5px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626' },
 }
 
-const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing', prodev:'Prodev' }
+const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing', prodev:'Prodev', sample_maker:'Sample Maker' }
 const FUNCTIONS_URL = 'https://ycwacahngbletmqafwac.supabase.co/functions/v1'
 
 export default function UserManagement() {
@@ -226,7 +226,8 @@ export default function UserManagement() {
                   <option value="estimator">Estimator</option>
                   <option value="manager">Manager</option>
                   <option value="purchasing">Purchasing</option>
-                  <option value="prodev">Prodev (Layouter/Sample Maker)</option>
+                  <option value="prodev">Prodev (Layouter)</option>
+                  <option value="sample_maker">Sample Maker</option>
                 </select>
               </div>
               <div>
@@ -296,7 +297,8 @@ export default function UserManagement() {
                         <option value="estimator">Estimator</option>
                         <option value="manager">Manager</option>
                         <option value="purchasing">Purchasing</option>
-                        <option value="prodev">Prodev</option>
+                        <option value="prodev">Prodev (Layouter)</option>
+                        <option value="sample_maker">Sample Maker</option>
                       </select>
                     </td>
                     <td style={s.td}>
