@@ -16,6 +16,7 @@ import DirectoryHarga from './pages/DirectoryHarga'
 import ProdevList from './pages/prodev/ProdevList'
 import ProdevForm from './pages/prodev/ProdevForm'
 import ProdevQueue from './pages/prodev/ProdevQueue'
+import TemplateLibrary from './pages/prodev/TemplateLibrary'
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth()
@@ -46,6 +47,7 @@ function RoleRouter() {
               <Route path="/prodev" element={<ProdevList />} />
               <Route path="/prodev/new/:formType" element={<ProdevForm />} />
               <Route path="/prodev/edit/:id" element={<ProdevForm />} />
+              <Route path="/prodev/templates" element={<TemplateLibrary />} />
             </>
           )}
           <Route path="/potong-kertas" element={<PotongKertas />} />
@@ -56,6 +58,7 @@ function RoleRouter() {
       {profile.role === 'prodev' && (
         <>
           <Route path="/" element={<ProdevQueue />} />
+          <Route path="/prodev/templates" element={<TemplateLibrary />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/directory" element={<DirectoryHarga />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -91,6 +94,7 @@ function RoleRouter() {
           <Route path="/purchasing/:quotationId" element={<PurchasingReview />} />
           <Route path="/prodev-queue" element={<ProdevQueue />} />
           <Route path="/prodev" element={<ProdevList />} />
+          <Route path="/prodev/templates" element={<TemplateLibrary />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />

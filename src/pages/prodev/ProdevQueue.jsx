@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
 import Layout from '../../components/Layout'
@@ -6,6 +6,7 @@ import {
   FORM_TYPE_SHORT, FORM_TYPE_LABEL, STATUS_JASA_LABEL,
   deriveStatus, STATUS_LABEL, STATUS_COLOR,
   statusWaktu, WAKTU_COLOR, fmtDate, todayStr,
+  templateUrlFor, PRODEV_BUCKET, DESIGN_FILE_ACCEPT, fileEntry, fileNameFromUrl, displayCustomer,
 } from '../../lib/prodev'
 
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
@@ -30,8 +31,13 @@ function Stat({ label, value, color }) {
 }
 
 // ── Modal detail order ────────────────────────────────────────────────────────
-function DetailModal({ order: o, names, onClose }) {
+function DetailModal({ order: o, names, onClose, onUploadResult, onDeleteFile, uploadingResult, isManager }) {
+  const resultRef = useRef()
   if (!o) return null
+  const st = deriveStatus(o)
+  const designFiles = (o.design_files || []).map(fileEntry)
+  const resultFiles = (o.layout_result_files || []).map(fileEntry)
+  const tplUrl = templateUrlFor(o)
   const Row = ({ k, v }) => (
     <div style={{ display:'flex', borderBottom:`1px solid ${C.cream}`, padding:'7px 0' }}>
       <div style={{ width:210, fontSize:12, color:'#9ca3af', flexShrink:0 }}>{k}</div>
@@ -52,6 +58,7 @@ function DetailModal({ order: o, names, onClose }) {
 
         <div style={{ fontSize:13, fontWeight:700, color:C.orange, margin:'14px 0 4px' }}>INFORMASI KONSUMEN</div>
         <Row k="Nama Perusahaan" v={o.customer_name} />
+        <Row k="Nama Customer" v={o.nama_customer} />
         <Row k="Nama Product/Brand" v={o.brand_name} />
         <Row k="Email / No. WA" v={o.contact} />
         <Row k="Tanggal Pengajuan" v={fmtDate(o.tanggal_pengajuan)} />
@@ -77,7 +84,66 @@ function DetailModal({ order: o, names, onClose }) {
         <Row k="Jenis Sambungan" v={o.jenis_sambungan} />
         <Row k="Finishing Lainnya" v={o.finishing_lainnya} />
 
-        <div style={{ fontSize:13, fontWeight:700, color:C.orange, margin:'14px 0 4px' }}>LAMPIRAN</div>
+        {/* ── Pacdora + file kerja layouter ── */}
+        <div style={{ fontSize:13, fontWeight:700, color:C.orange, margin:'16px 0 8px' }}>TEMPLATE PACDORA & FILE KERJA</div>
+
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap', alignItems:'center', marginBottom:12 }}>
+          <a href={tplUrl} target="_blank" rel="noreferrer"
+            style={{ padding:'9px 16px', background:'#7c3aed', color:'#fff', borderRadius:8, fontSize:13, fontWeight:600, textDecoration:'none' }}>
+            🎨 Buka Template Pacdora ↗
+          </a>
+          {o.dimensi_produk && (
+            <span style={{ fontSize:13, color:C.dark, background:C.cream, padding:'8px 12px', borderRadius:8, border:`1px solid ${C.border}` }}>
+              Dimensi (P×L×T): <b>{o.dimensi_produk}</b> cm
+            </span>
+          )}
+          {!o.template_url && (
+            <span style={{ fontSize:11, color:'#9ca3af' }}>Belum ada link spesifik — membuka katalog dieline Pacdora.</span>
+          )}
+        </div>
+
+        {/* File desain konsumen (download) */}
+        <div style={{ fontSize:12, color:'#6b7280', margin:'6px 0 4px', fontWeight:600 }}>File desain dari konsumen</div>
+        {designFiles.length === 0 ? (
+          <div style={{ fontSize:12.5, color:'#9ca3af', marginBottom:8 }}>— tidak ada file —</div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            {designFiles.map((f, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 11px', background:C.cream, borderRadius:7, border:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:12.5, color:C.dark, flex:1, wordBreak:'break-all' }}>📄 {f.name}</span>
+                <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize:12, color:'#2563eb' }}>Download ↗</a>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Hasil layout (upload oleh layouter) */}
+        <div style={{ fontSize:12, color:'#6b7280', margin:'10px 0 4px', fontWeight:600 }}>Hasil layout (dieline export)</div>
+        {resultFiles.length === 0 ? (
+          <div style={{ fontSize:12.5, color:'#9ca3af', marginBottom:8 }}>— belum ada hasil diupload —</div>
+        ) : (
+          <div style={{ display:'flex', flexDirection:'column', gap:6, marginBottom:10 }}>
+            {resultFiles.map((f, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'7px 11px', background:'#f0fdf4', borderRadius:7, border:'1px solid #bbf7d0' }}>
+                <span style={{ fontSize:12.5, color:C.dark, flex:1, wordBreak:'break-all' }}>✅ {f.name}</span>
+                <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize:12, color:'#2563eb' }}>Buka ↗</a>
+                {!isManager && <button onClick={() => onDeleteFile(o, 'layout_result_files', i)} style={{ ...s.btnGhost, color:'#dc2626', borderColor:'#fecaca', padding:'4px 8px' }}>✕</button>}
+              </div>
+            ))}
+          </div>
+        )}
+        {!isManager && st === 'layout' && (
+          <div>
+            <button disabled={uploadingResult} onClick={() => resultRef.current?.click()} style={{ ...s.btnBlue, opacity: uploadingResult ? 0.6 : 1 }}>
+              {uploadingResult ? 'Mengunggah...' : '+ Upload Hasil Layout'}
+            </button>
+            <input ref={resultRef} type="file" accept={DESIGN_FILE_ACCEPT} style={{ display:'none' }}
+              onChange={async e => { await onUploadResult(o, e.target.files[0]); e.target.value = '' }} />
+            <div style={{ fontSize:11, color:'#9ca3af', marginTop:5 }}>Upload hasil dulu supaya tombol "Layout Selesai" aktif.</div>
+          </div>
+        )}
+
+        <div style={{ fontSize:13, fontWeight:700, color:C.orange, margin:'16px 0 4px' }}>LAMPIRAN</div>
         <Row k="Catatan" v={o.lampiran_text} />
         {o.lampiran_link && (
           <div style={{ display:'flex', borderBottom:`1px solid ${C.cream}`, padding:'7px 0' }}>
@@ -105,9 +171,10 @@ export default function ProdevQueue() {
   const [filter, setFilter] = useState('aktif')  // aktif|layout|rakit|selesai|all
   const [typeFilter, setTypeFilter] = useState('all')
   const [mineOnly, setMineOnly] = useState(false)
-  const [detail, setDetail] = useState(null)
+  const [detailId, setDetailId] = useState(null)
   const [pulse, setPulse]   = useState(false)
   const [busyId, setBusyId] = useState(null)
+  const [uploadingResult, setUploadingResult] = useState(false)
 
   useEffect(() => {
     fetchOrders()
@@ -133,6 +200,11 @@ export default function ProdevQueue() {
 
   // ── Aksi layouter: tandai layout selesai hari ini ──
   async function selesaiLayout(o) {
+    if (!(o.layout_result_files || []).length) {
+      alert('Upload file hasil layout dulu (klik "Detail" → Upload Hasil Layout) sebelum menandai selesai.')
+      setDetailId(o.id)
+      return
+    }
     if (!confirm(`Tandai layout "${o.customer_name} — ${o.brand_name || o.jenis_kemasan}" selesai hari ini?`)) return
     setBusyId(o.id)
     const { error } = await supabase.from('prodev_orders')
@@ -169,6 +241,29 @@ export default function ProdevQueue() {
       .update({ status_dummy_final: val || null }).eq('id', o.id)
     if (error) alert('Gagal: ' + error.message)
     setBusyId(null)
+  }
+
+  // ── Upload hasil layout (dieline export) ke bucket prodev-files ──
+  async function uploadResult(o, file) {
+    if (!file) return
+    setUploadingResult(true)
+    const safe = (file.name || 'file').replace(/[^\w.\-]+/g, '_')
+    const path = `prodev/result/${o.id}/${Date.now()}_${safe}`
+    const { error: upErr } = await supabase.storage.from(PRODEV_BUCKET).upload(path, file)
+    if (upErr) { alert('Upload gagal: ' + upErr.message + '\n(Pastikan bucket "prodev-files" & migration Pacdora sudah dijalankan.)'); setUploadingResult(false); return }
+    const { data: { publicUrl } } = supabase.storage.from(PRODEV_BUCKET).getPublicUrl(path)
+    const next = [ ...(o.layout_result_files || []).map(fileEntry), { url: publicUrl, name: file.name || fileNameFromUrl(publicUrl) } ]
+    const { error } = await supabase.from('prodev_orders').update({ layout_result_files: next }).eq('id', o.id)
+    if (error) alert('Gagal menyimpan: ' + error.message)
+    setUploadingResult(false)
+  }
+
+  // ── Hapus satu file (hasil layout) ──
+  async function deleteFile(o, field, i) {
+    if (!confirm('Hapus file ini?')) return
+    const next = (o[field] || []).filter((_, idx) => idx !== i)
+    const { error } = await supabase.from('prodev_orders').update({ [field]: next }).eq('id', o.id)
+    if (error) alert('Gagal: ' + error.message)
   }
 
   const counts = { aktif:0, layout:0, rakit:0, selesai:0, all: orders.length }
@@ -255,6 +350,7 @@ export default function ProdevQueue() {
                     <td style={s.td}><span style={s.badge(o.form_type === 'fps' ? C.orange : '#1251A3')}>{FORM_TYPE_SHORT[o.form_type]}</span></td>
                     <td style={{ ...s.td, fontWeight:600 }}>
                       {o.customer_name}
+                      {o.nama_customer && <div style={{ fontSize:11, color:C.brown, fontWeight:500 }}>{o.nama_customer}</div>}
                       {o.kode_order && <div style={{ fontSize:10.5, color:'#9ca3af' }}>{o.kode_order}</div>}
                     </td>
                     <td style={s.td}>{o.brand_name || '—'}<div style={{ fontSize:11, color:'#9ca3af' }}>{o.jenis_kemasan}{o.model_layout ? ` · ${o.model_layout}` : ''}</div></td>
@@ -285,9 +381,15 @@ export default function ProdevQueue() {
                       ) : <span style={{ color:'#d1d5db' }}>—</span>}
                     </td>
                     <td style={{ ...s.td, whiteSpace:'nowrap' }}>
-                      <button style={{ ...s.btnGhost, marginRight:6 }} onClick={() => setDetail(o)}>Detail</button>
+                      <button style={{ ...s.btnGhost, marginRight:6 }} onClick={() => setDetailId(o.id)}>Detail</button>
                       {!isManager && st === 'layout' && (
-                        <button style={s.btnBlue} disabled={busy} onClick={() => selesaiLayout(o)}>Layout Selesai</button>
+                        <>
+                          <a href={templateUrlFor(o)} target="_blank" rel="noreferrer" title="Buka template dieline di Pacdora"
+                            style={{ ...s.btnGhost, textDecoration:'none', marginRight:6, borderColor:'#c4b5fd', color:'#6d28d9' }}>🎨 Template ↗</a>
+                          <button style={{ ...s.btnBlue, opacity: (o.layout_result_files||[]).length ? 1 : 0.55 }} disabled={busy}
+                            title={(o.layout_result_files||[]).length ? 'Tandai layout selesai' : 'Upload hasil layout dulu (via Detail)'}
+                            onClick={() => selesaiLayout(o)}>Layout Selesai</button>
+                        </>
                       )}
                       {!isManager && st === 'rakit' && (
                         <>
@@ -309,7 +411,14 @@ export default function ProdevQueue() {
         </div>
       </div>
 
-      <DetailModal order={detail} names={names} onClose={() => setDetail(null)} />
+      <DetailModal
+        order={orders.find(o => o.id === detailId) || null}
+        names={names}
+        isManager={isManager}
+        uploadingResult={uploadingResult}
+        onUploadResult={uploadResult}
+        onDeleteFile={deleteFile}
+        onClose={() => setDetailId(null)} />
     </Layout>
   )
 }
