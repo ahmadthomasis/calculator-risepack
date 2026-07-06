@@ -13,6 +13,9 @@ import UserManagement from './pages/UserManagement'
 import PurchasingQueue from './pages/PurchasingQueue'
 import PurchasingReview from './pages/PurchasingReview'
 import DirectoryHarga from './pages/DirectoryHarga'
+import ProdevList from './pages/prodev/ProdevList'
+import ProdevForm from './pages/prodev/ProdevForm'
+import ProdevQueue from './pages/prodev/ProdevQueue'
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth()
@@ -37,6 +40,22 @@ function RoleRouter() {
       {profile.role === 'sales' && (
         <>
           <Route path="/" element={<SalesDashboard />} />
+          {/* Menu Prodev hanya untuk sales yang ditandai sebagai innersales */}
+          {profile.is_innersales && (
+            <>
+              <Route path="/prodev" element={<ProdevList />} />
+              <Route path="/prodev/new/:formType" element={<ProdevForm />} />
+              <Route path="/prodev/edit/:id" element={<ProdevForm />} />
+            </>
+          )}
+          <Route path="/potong-kertas" element={<PotongKertas />} />
+          <Route path="/directory" element={<DirectoryHarga />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </>
+      )}
+      {profile.role === 'prodev' && (
+        <>
+          <Route path="/" element={<ProdevQueue />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/directory" element={<DirectoryHarga />} />
           <Route path="*" element={<Navigate to="/" replace />} />
@@ -70,6 +89,8 @@ function RoleRouter() {
           <Route path="/estimator" element={<EstimatorQueue />} />
           <Route path="/purchasing" element={<PurchasingQueue />} />
           <Route path="/purchasing/:quotationId" element={<PurchasingReview />} />
+          <Route path="/prodev-queue" element={<ProdevQueue />} />
+          <Route path="/prodev" element={<ProdevList />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />

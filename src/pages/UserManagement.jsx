@@ -16,7 +16,7 @@ const s = {
   btnDanger:{ padding:'5px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626' },
 }
 
-const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager' }
+const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing', prodev:'Prodev' }
 const FUNCTIONS_URL = 'https://ycwacahngbletmqafwac.supabase.co/functions/v1'
 
 export default function UserManagement() {
@@ -60,7 +60,15 @@ export default function UserManagement() {
     setLoading(true)
     try {
       const data = await callFunction('manage-user', { action: 'list' })
-      setUsers(data.users || [])
+      // Gabungkan data prodev (is_innersales + pemetaan layouter) dari tabel profiles.
+      // Edge Function 'manage-user' tidak tahu kolom baru ini, jadi diambil terpisah.
+      const { data: profs } = await supabase.from('profiles').select('id, is_innersales, default_layouter_id')
+      const profMap = Object.fromEntries((profs || []).map(p => [p.id, p]))
+      setUsers((data.users || []).map(u => ({
+        ...u,
+        is_innersales: profMap[u.id]?.is_innersales || false,
+        default_layouter_id: profMap[u.id]?.default_layouter_id || null,
+      })))
       setError(null)
     } catch (e) {
       setError(e.message)
@@ -83,6 +91,18 @@ export default function UserManagement() {
       showToast('error', e.message)
     }
     setSubmitting(false)
+  }
+
+  // Update flag innersales / pemetaan layouter — langsung ke tabel profiles
+  // (diizinkan RLS policy "profiles_manager_update" dari migration prodev).
+  const updateProdevFields = async (userId, patch) => {
+    const { error } = await supabase.from('profiles').update(patch).eq('id', userId)
+    if (error) {
+      showToast('error', `Gagal: ${error.message} — pastikan migration prodev sudah dijalankan di Supabase.`)
+      return
+    }
+    setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...patch } : u))
+    showToast('success', 'Pengaturan innersales diperbarui')
   }
 
   const handleRoleChange = async (userId, newRole) => {
@@ -206,6 +226,7 @@ export default function UserManagement() {
                   <option value="estimator">Estimator</option>
                   <option value="manager">Manager</option>
                   <option value="purchasing">Purchasing</option>
+                  <option value="prodev">Prodev (Layouter/Sample Maker)</option>
                 </select>
               </div>
               <div>
@@ -242,6 +263,7 @@ export default function UserManagement() {
                   <th style={s.th}>Nama</th>
                   <th style={s.th}>Email</th>
                   <th style={s.th}>Role</th>
+                  <th style={s.th}>Innersales → Layouter</th>
                   <th style={s.th}>Status</th>
                   <th style={{ ...s.th, textAlign:'right' }}>Aksi</th>
                 </tr>
@@ -249,6 +271,7 @@ export default function UserManagement() {
               <tbody>
                 {users.map(u => {
                   const isEditing = editingId === u.id
+                  const layouters = users.filter(x => x.role === 'prodev' && !x.banned)
                   return (
                   <tr key={u.id}>
                     <td style={s.td}>
@@ -273,7 +296,33 @@ export default function UserManagement() {
                         <option value="estimator">Estimator</option>
                         <option value="manager">Manager</option>
                         <option value="purchasing">Purchasing</option>
+                        <option value="prodev">Prodev</option>
                       </select>
+                    </td>
+                    <td style={s.td}>
+                      {u.role === 'sales' ? (
+                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                          <input type="checkbox" checked={!!u.is_innersales} title="Tandai sebagai innersales (bisa buat FPS/FSA)"
+                            onChange={e => updateProdevFields(u.id, {
+                              is_innersales: e.target.checked,
+                              // Kalau flag dimatikan, pemetaan layouter ikut dikosongkan
+                              ...(e.target.checked ? {} : { default_layouter_id: null }),
+                            })}
+                            style={{ width:15, height:15, cursor:'pointer' }} />
+                          {u.is_innersales && (
+                            <select
+                              style={{ ...s.select, width:'auto', padding:'5px 8px', fontSize:12 }}
+                              value={u.default_layouter_id || ''}
+                              onChange={e => updateProdevFields(u.id, { default_layouter_id: e.target.value || null })}
+                            >
+                              <option value="">— pilih layouter —</option>
+                              {layouters.map(l => <option key={l.id} value={l.id}>{l.full_name}</option>)}
+                            </select>
+                          )}
+                        </div>
+                      ) : (
+                        <span style={{ color:'#d1d5db' }}>—</span>
+                      )}
                     </td>
                     <td style={s.td}>
                       <span style={{

@@ -1,7 +1,7 @@
 import { useAuth } from '../lib/AuthContext'
 import { useNavigate, useLocation } from 'react-router-dom'
 
-const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing' }
+const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', purchasing:'Purchasing', prodev:'Prodev' }
 const C = {
   dark:   '#2C1810',
   orange: '#E8760A',
@@ -11,10 +11,11 @@ const C = {
 }
 
 const managerTabs = [
-  { path: '/',            label: 'Manager' },
-  { path: '/sales',       label: 'Sales' },
-  { path: '/estimator',   label: 'Estimator' },
-  { path: '/purchasing',  label: 'Purchasing' },
+  { path: '/',             label: 'Manager' },
+  { path: '/sales',        label: 'Sales' },
+  { path: '/estimator',    label: 'Estimator' },
+  { path: '/purchasing',   label: 'Purchasing' },
+  { path: '/prodev-queue', label: 'Prodev' },
 ]
 
 const HomeIcon = ({ active }) => (
@@ -54,6 +55,14 @@ const BookIcon = ({ active }) => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
     <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+  </svg>
+)
+
+const BoxIcon = ({ active }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 8 12 3 3 8v8l9 5 9-5V8Z" />
+    <path d="M3 8l9 5 9-5" />
+    <path d="M12 13v8" />
   </svg>
 )
 
@@ -120,8 +129,15 @@ export default function Layout({ children, title, beforeNavigate }) {
           <span style={{ fontSize:10.5, fontWeight:600, color: isHomeActive ? '#fff' : 'rgba(255,255,255,0.55)' }}>Home</span>
         </button>
 
-        {sidebarItems.map(item => {
-          const active = location.pathname === item.path
+        {[
+          // Menu Prodev: hanya untuk sales yang ditandai innersales
+          ...(profile?.role === 'sales' && profile?.is_innersales
+            ? [{ path:'/prodev', label:'Prodev', Icon: BoxIcon }] : []),
+          ...sidebarItems,
+        ].map(item => {
+          const active = item.path === '/prodev'
+            ? location.pathname.startsWith('/prodev')
+            : location.pathname === item.path
           const { Icon } = item
           return (
             <button
