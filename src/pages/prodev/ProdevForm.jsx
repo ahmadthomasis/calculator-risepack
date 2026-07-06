@@ -42,7 +42,7 @@ const emptyForm = {
   bahan_kemasan:'', berat_produk:'', finishing:[''],
   jenis_sambungan:'', finishing_lainnya:'',
   lampiran_text:'', lampiran_link:'', lampiran_images:[], design_files:[],
-  layouter_id:'',
+  layouter_id:'', keterangan_revisi:'',
 }
 
 const localToday = () => {
@@ -51,8 +51,8 @@ const localToday = () => {
 }
 
 export default function ProdevForm() {
-  // Mode create: /prodev/new/:formType  — mode edit: /prodev/edit/:id
-  const { formType: formTypeParam, id: editId } = useParams()
+  // Mode create: /prodev/new/:formType — edit: /prodev/edit/:id — revisi: /prodev/revisi/:revisiId
+  const { formType: formTypeParam, id: editId, revisiId } = useParams()
   const { profile } = useAuth()
   const navigate    = useNavigate()
   const fileRef     = useRef()
@@ -63,12 +63,13 @@ export default function ProdevForm() {
   const [layouters, setLayouters] = useState([])
   const [templates, setTemplates] = useState([])
   const [modelManual, setModelManual] = useState(false)   // true = ketik model manual (bukan dari library)
+  const [revisiInfo, setRevisiInfo] = useState(null)      // { revisi_dari, revisi_ke, asal_customer } saat mode FPS Ulang
   const [saving, setSaving]       = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadingDesign, setUploadingDesign] = useState(false)
-  const [loading, setLoading]     = useState(!!editId)
+  const [loading, setLoading]     = useState(!!editId || !!revisiId)
 
-  useEffect(() => { init() }, [editId])
+  useEffect(() => { init() }, [editId, revisiId])
 
   async function init() {
     // Daftar user prodev untuk pilihan PIC Layouter
@@ -107,6 +108,41 @@ export default function ProdevForm() {
           lampiran_text: o.lampiran_text || '', lampiran_link: o.lampiran_link || '',
           lampiran_images: o.lampiran_images || [], design_files: o.design_files || [],
           layouter_id: o.layouter_id || '',
+        })
+      }
+      setLoading(false)
+    } else if (revisiId) {
+      // ── Mode FPS Ulang: copy dari order asli jadi order revisi baru ──
+      const { data: o } = await supabase.from('prodev_orders').select('*').eq('id', revisiId).single()
+      if (o) {
+        setFormType(o.form_type)
+        const inLib = (tpl || []).some(t => t.nama_model === o.model_layout)
+        setModelManual(!!o.model_layout && !inLib)
+        setRevisiInfo({
+          revisi_dari: o.id,
+          revisi_ke: (o.revisi_ke || 0) + 1,
+          asal_customer: o.customer_name,
+          asal_kode: o.kode_order,
+        })
+        setForm({
+          kode_order: o.kode_order || '', customer_name: o.customer_name || '',
+          nama_customer: o.nama_customer || '',
+          contact: o.contact || '', brand_name: o.brand_name || '',
+          tanggal_pengajuan: localToday(), deadline: '',   // deadline putaran revisi diisi baru
+          pic_sales: o.pic_sales || '', jenis_kemasan: o.jenis_kemasan || 'Softbox',
+          model_layout: o.model_layout || '', template_url: o.template_url || '',
+          status_jasa: o.status_jasa || 'non_jasa_desain',
+          urgensi: o.urgensi || 'Dikirim', jumlah_part: String(o.jumlah_part ?? '1'),
+          jumlah_kebutuhan: o.jumlah_kebutuhan || '', potensial_omzet: o.potensial_omzet || '',
+          dimensi_produk: o.dimensi_produk || '',
+          lp_layout: (o.lp_layout || []).length ? o.lp_layout : [''],
+          dimensi_kemasan: (o.dimensi_kemasan || []).length ? o.dimensi_kemasan : [''],
+          bahan_kemasan: o.bahan_kemasan || '', berat_produk: o.berat_produk || '',
+          finishing: (o.finishing || []).length ? o.finishing : [''],
+          jenis_sambungan: o.jenis_sambungan || '', finishing_lainnya: o.finishing_lainnya || '',
+          lampiran_text: o.lampiran_text || '', lampiran_link: o.lampiran_link || '',
+          lampiran_images: o.lampiran_images || [], design_files: o.design_files || [],
+          layouter_id: o.layouter_id || '', keterangan_revisi: '',
         })
       }
       setLoading(false)
@@ -190,6 +226,7 @@ export default function ProdevForm() {
     if (!form.customer_name.trim()) { alert('Nama perusahaan wajib diisi.'); return }
     if (!form.deadline) { alert('Deadline wajib diisi.'); return }
     if (!form.layouter_id) { alert('PIC Layouter wajib dipilih. Kalau daftar kosong, minta manager membuat user role Prodev dulu.'); return }
+    if (revisiInfo && !form.keterangan_revisi.trim()) { alert('Keterangan revisi wajib diisi (apa yang harus diperbaiki dari layout sebelumnya?).'); return }
 
     setSaving(true)
     const cleanList = (arr) => arr.map(v => v.trim()).filter(Boolean)
@@ -230,7 +267,10 @@ export default function ProdevForm() {
     if (editId) {
       ;({ error } = await supabase.from('prodev_orders').update(payload).eq('id', editId))
     } else {
-      ;({ error } = await supabase.from('prodev_orders').insert({ ...payload, created_by: profile.id }))
+      const extra = revisiInfo
+        ? { revisi_dari: revisiInfo.revisi_dari, revisi_ke: revisiInfo.revisi_ke, keterangan_revisi: form.keterangan_revisi.trim() }
+        : {}
+      ;({ error } = await supabase.from('prodev_orders').insert({ ...payload, ...extra, created_by: profile.id }))
     }
     setSaving(false)
     if (error) { alert('Gagal menyimpan: ' + error.message); return }
@@ -239,7 +279,7 @@ export default function ProdevForm() {
 
   if (loading) return <Layout title="Form Prodev"><div style={{ padding:60, textAlign:'center', color:'#9ca3af' }}>Memuat...</div></Layout>
 
-  const title = (editId ? 'Edit ' : '') + FORM_TYPE_LABEL[formType]
+  const title = revisiInfo ? `FPS Ulang — Revisi ${revisiInfo.revisi_ke}` : (editId ? 'Edit ' : '') + FORM_TYPE_LABEL[formType]
 
   return (
     <Layout title={title}>
@@ -250,6 +290,20 @@ export default function ProdevForm() {
       }}>← Kembali ke Prodev</button>
 
       <form onSubmit={handleSubmit} style={{ maxWidth:980 }}>
+
+        {/* ── Banner + keterangan revisi (mode FPS Ulang) ── */}
+        {revisiInfo && (
+          <div style={{ ...s.card, background:'#faf5ff', border:'1px solid #e9d5ff' }}>
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:10 }}>
+              <span style={{ display:'inline-block', padding:'4px 12px', borderRadius:20, fontSize:13, fontWeight:700, background:'#7c3aed', color:'#fff' }}>Revisi {revisiInfo.revisi_ke}</span>
+              <span style={{ fontSize:13, color:C.brown }}>Order asli: <b>{revisiInfo.asal_customer}</b>{revisiInfo.asal_kode ? ` · ${revisiInfo.asal_kode}` : ''}</span>
+            </div>
+            <div style={s.sSub}>Isian ter-copy dari order asli. Isi keterangan revisi di bawah, sesuaikan deadline, lalu kirim — order revisi baru masuk antrian prodev.</div>
+            <label style={s.label}>Keterangan Revisi (dari konsumen) *</label>
+            <textarea rows={3} style={s.textarea} value={form.keterangan_revisi} onChange={set('keterangan_revisi')}
+              placeholder="cth. Masih banyak bekas lem, konsumen tidak mau ada bekas lem. / Kuncian terlalu longgar, minta lebih rapat." required />
+          </div>
+        )}
 
         {/* ── Pilih jenis form (hanya saat buat baru) ── */}
         {!editId && (
@@ -505,7 +559,7 @@ export default function ProdevForm() {
           <button type="submit" disabled={saving} style={{
             padding:'12px 28px', background:C.orange, color:'#fff', border:'none',
             borderRadius:8, fontSize:15, fontWeight:600, cursor:'pointer', opacity: saving ? 0.6 : 1,
-          }}>{saving ? 'Menyimpan...' : (editId ? 'Simpan Perubahan' : `Kirim ${formType.toUpperCase()}`)}</button>
+          }}>{saving ? 'Menyimpan...' : (revisiInfo ? `Kirim Revisi ${revisiInfo.revisi_ke}` : editId ? 'Simpan Perubahan' : `Kirim ${formType.toUpperCase()}`)}</button>
         </div>
       </form>
     </Layout>

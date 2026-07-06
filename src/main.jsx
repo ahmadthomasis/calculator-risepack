@@ -47,6 +47,7 @@ function RoleRouter() {
               <Route path="/prodev" element={<ProdevList />} />
               <Route path="/prodev/new/:formType" element={<ProdevForm />} />
               <Route path="/prodev/edit/:id" element={<ProdevForm />} />
+              <Route path="/prodev/revisi/:revisiId" element={<ProdevForm />} />
               <Route path="/prodev/templates" element={<TemplateLibrary />} />
             </>
           )}
@@ -102,6 +103,7 @@ function RoleRouter() {
           <Route path="/purchasing/:quotationId" element={<PurchasingReview />} />
           <Route path="/prodev-queue" element={<ProdevQueue />} />
           <Route path="/prodev" element={<ProdevList />} />
+          <Route path="/prodev/revisi/:revisiId" element={<ProdevForm />} />
           <Route path="/prodev/templates" element={<TemplateLibrary />} />
           <Route path="/calculator/:requestId" element={<Calculator />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
