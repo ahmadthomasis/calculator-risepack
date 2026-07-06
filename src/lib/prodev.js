@@ -84,3 +84,40 @@ export const fmtDate = (s) => {
   if (!s) return '—'
   return new Date(String(s).slice(0, 10)).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+// ── Integrasi Pacdora (Level 1) ─────────────────────────────────────────────
+// Bucket storage untuk file prodev (desain konsumen + hasil layout).
+export const PRODEV_BUCKET = 'prodev-files'
+
+// Tipe file desain/hasil yang diterima (bukan cuma gambar).
+export const DESIGN_FILE_ACCEPT = '.pdf,.ai,.cdr,.eps,.svg,.zip,.rar,image/*'
+
+// Halaman katalog dieline Pacdora — fallback kalau order belum punya template_url.
+export const PACDORA_DIELINES_URL = 'https://www.pacdora.com/dielines'
+
+// URL "Buka Template" untuk sebuah order: pakai template_url kalau ada,
+// kalau tidak jatuh ke katalog dieline Pacdora (search di sana manual).
+export function templateUrlFor(order) {
+  return (order?.template_url && order.template_url.trim()) || PACDORA_DIELINES_URL
+}
+
+// Nama file dari URL storage (untuk label download).
+export function fileNameFromUrl(url) {
+  try { return decodeURIComponent(String(url).split('/').pop().split('?')[0]) }
+  catch { return 'file' }
+}
+
+// Normalisasi entri file: dukung format lama (string url) & baru ({url,name}).
+export function fileEntry(f) {
+  if (!f) return { url: '', name: 'file' }
+  if (typeof f === 'string') return { url: f, name: fileNameFromUrl(f) }
+  return { url: f.url, name: f.name || fileNameFromUrl(f.url) }
+}
+
+// Gabungan nama perusahaan + nama customer untuk tampilan.
+export function displayCustomer(o) {
+  const co = o?.customer_name || ''
+  const person = o?.nama_customer || ''
+  if (co && person) return `${co} — ${person}`
+  return co || person || '—'
+}

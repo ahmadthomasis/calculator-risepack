@@ -5,6 +5,7 @@ import { useAuth } from '../../lib/AuthContext'
 import Layout from '../../components/Layout'
 import {
   FORM_TYPE_LABEL, JENIS_KEMASAN_OPTIONS, URGENSI_OPTIONS, STATUS_JASA_LABEL,
+  PRODEV_BUCKET, DESIGN_FILE_ACCEPT, fileNameFromUrl,
 } from '../../lib/prodev'
 
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
@@ -33,14 +34,14 @@ const s = {
 const MAX_IMAGES = 5
 
 const emptyForm = {
-  kode_order:'', customer_name:'', contact:'', brand_name:'',
+  kode_order:'', customer_name:'', nama_customer:'', contact:'', brand_name:'',
   tanggal_pengajuan:'', deadline:'', pic_sales:'',
-  jenis_kemasan:'Softbox', model_layout:'', status_jasa:'non_jasa_desain',
+  jenis_kemasan:'Softbox', model_layout:'', template_url:'', status_jasa:'non_jasa_desain',
   urgensi:'Dikirim', jumlah_part:'1', jumlah_kebutuhan:'', potensial_omzet:'',
   dimensi_produk:'', lp_layout:[''], dimensi_kemasan:[''],
   bahan_kemasan:'', berat_produk:'', finishing:[''],
   jenis_sambungan:'', finishing_lainnya:'',
-  lampiran_text:'', lampiran_link:'', lampiran_images:[],
+  lampiran_text:'', lampiran_link:'', lampiran_images:[], design_files:[],
   layouter_id:'',
 }
 
@@ -55,12 +56,16 @@ export default function ProdevForm() {
   const { profile } = useAuth()
   const navigate    = useNavigate()
   const fileRef     = useRef()
+  const designRef   = useRef()
 
   const [formType, setFormType]   = useState(formTypeParam === 'fsa' ? 'fsa' : 'fps')
   const [form, setForm]           = useState({ ...emptyForm, tanggal_pengajuan: localToday() })
   const [layouters, setLayouters] = useState([])
+  const [templates, setTemplates] = useState([])
+  const [modelManual, setModelManual] = useState(false)   // true = ketik model manual (bukan dari library)
   const [saving, setSaving]       = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingDesign, setUploadingDesign] = useState(false)
   const [loading, setLoading]     = useState(!!editId)
 
   useEffect(() => { init() }, [editId])
@@ -71,16 +76,26 @@ export default function ProdevForm() {
       .from('profiles').select('id, full_name').eq('role', 'prodev').order('full_name')
     setLayouters(prodevUsers || [])
 
+    // Template Library (model layout → link Pacdora)
+    const { data: tpl } = await supabase
+      .from('prodev_templates').select('*').order('sort').order('nama_model')
+    setTemplates(tpl || [])
+
     if (editId) {
       const { data: o } = await supabase.from('prodev_orders').select('*').eq('id', editId).single()
       if (o) {
         setFormType(o.form_type)
+        // Kalau model tersimpan tidak ada di library, buka mode manual
+        const inLib = (tpl || []).some(t => t.nama_model === o.model_layout)
+        setModelManual(!!o.model_layout && !inLib)
         setForm({
           kode_order: o.kode_order || '', customer_name: o.customer_name || '',
+          nama_customer: o.nama_customer || '',
           contact: o.contact || '', brand_name: o.brand_name || '',
           tanggal_pengajuan: o.tanggal_pengajuan || localToday(), deadline: o.deadline || '',
           pic_sales: o.pic_sales || '', jenis_kemasan: o.jenis_kemasan || 'Softbox',
-          model_layout: o.model_layout || '', status_jasa: o.status_jasa || 'non_jasa_desain',
+          model_layout: o.model_layout || '', template_url: o.template_url || '',
+          status_jasa: o.status_jasa || 'non_jasa_desain',
           urgensi: o.urgensi || 'Dikirim', jumlah_part: String(o.jumlah_part ?? '1'),
           jumlah_kebutuhan: o.jumlah_kebutuhan || '', potensial_omzet: o.potensial_omzet || '',
           dimensi_produk: o.dimensi_produk || '',
@@ -90,7 +105,7 @@ export default function ProdevForm() {
           finishing: (o.finishing || []).length ? o.finishing : [''],
           jenis_sambungan: o.jenis_sambungan || '', finishing_lainnya: o.finishing_lainnya || '',
           lampiran_text: o.lampiran_text || '', lampiran_link: o.lampiran_link || '',
-          lampiran_images: o.lampiran_images || [],
+          lampiran_images: o.lampiran_images || [], design_files: o.design_files || [],
           layouter_id: o.layouter_id || '',
         })
       }
@@ -133,6 +148,30 @@ export default function ProdevForm() {
     setUploading(false)
   }
 
+  // ── Upload file desain konsumen (pdf/ai/cdr/eps/zip/gambar) ──
+  async function uploadDesignFile(file) {
+    if (!file) return
+    setUploadingDesign(true)
+    const safe = (file.name || 'file').replace(/[^\w.\-]+/g, '_')
+    const path = `prodev/design/${Date.now()}_${safe}`
+    const { error } = await supabase.storage.from(PRODEV_BUCKET).upload(path, file)
+    if (!error) {
+      const { data: { publicUrl } } = supabase.storage.from(PRODEV_BUCKET).getPublicUrl(path)
+      setForm(f => ({ ...f, design_files: [...f.design_files, { url: publicUrl, name: file.name || fileNameFromUrl(publicUrl) }] }))
+    } else {
+      alert('Upload gagal: ' + error.message + '\n(Pastikan bucket "prodev-files" & migration Pacdora sudah dijalankan.)')
+    }
+    setUploadingDesign(false)
+  }
+
+  // ── Pilih model dari Template Library → set model + template_url otomatis ──
+  function selectModel(nama) {
+    if (nama === '__manual__') { setModelManual(true); setForm(f => ({ ...f, model_layout:'', template_url:'' })); return }
+    const t = templates.find(x => x.nama_model === nama)
+    setModelManual(false)
+    setForm(f => ({ ...f, model_layout: nama, template_url: t?.pacdora_url || '' }))
+  }
+
   function handlePaste(e) {
     const items = e.clipboardData?.items
     if (!items) return
@@ -158,6 +197,7 @@ export default function ProdevForm() {
       form_type: formType,
       kode_order: form.kode_order.trim() || null,
       customer_name: form.customer_name.trim(),
+      nama_customer: form.nama_customer.trim() || null,
       contact: form.contact.trim() || null,
       brand_name: form.brand_name.trim() || null,
       tanggal_pengajuan: form.tanggal_pengajuan || localToday(),
@@ -165,6 +205,7 @@ export default function ProdevForm() {
       pic_sales: form.pic_sales.trim() || null,
       jenis_kemasan: form.jenis_kemasan,
       model_layout: form.model_layout.trim() || null,
+      template_url: form.template_url.trim() || null,
       status_jasa: form.status_jasa,
       urgensi: form.urgensi,
       jumlah_part: parseInt(form.jumlah_part) || null,
@@ -181,6 +222,7 @@ export default function ProdevForm() {
       lampiran_text: form.lampiran_text.trim() || null,
       lampiran_link: form.lampiran_link.trim() || null,
       lampiran_images: form.lampiran_images,
+      design_files: form.design_files,
       layouter_id: form.layouter_id || null,
     }
 
@@ -233,6 +275,10 @@ export default function ProdevForm() {
               <input style={s.input} value={form.customer_name} onChange={set('customer_name')} placeholder="cth. Bumbu Bunda" required />
             </div>
             <div>
+              <label style={s.label}>Nama Customer</label>
+              <input style={s.input} value={form.nama_customer} onChange={set('nama_customer')} placeholder="cth. Eko (PIC konsumen)" />
+            </div>
+            <div>
               <label style={s.label}>Nama Product/Brand</label>
               <input style={s.input} value={form.brand_name} onChange={set('brand_name')} placeholder="cth. Box Kaldu" />
             </div>
@@ -274,7 +320,33 @@ export default function ProdevForm() {
             </div>
             <div>
               <label style={s.label}>Model Layout</label>
-              <input style={s.input} value={form.model_layout} onChange={set('model_layout')} placeholder="cth. Tuck end snaplock" />
+              {!modelManual ? (
+                <select style={s.select} value={form.model_layout} onChange={e => selectModel(e.target.value)}>
+                  <option value="">— pilih model —</option>
+                  {Object.entries(
+                    templates.reduce((acc, t) => { (acc[t.kategori] ||= []).push(t); return acc }, {})
+                  ).map(([kat, list]) => (
+                    <optgroup key={kat} label={kat}>
+                      {list.map(t => <option key={t.id} value={t.nama_model}>{t.nama_model}</option>)}
+                    </optgroup>
+                  ))}
+                  <option value="__manual__">+ Model lain (ketik manual)…</option>
+                </select>
+              ) : (
+                <>
+                  <input style={s.input} value={form.model_layout} onChange={set('model_layout')} placeholder="cth. Tuck end snaplock" />
+                  <input style={{ ...s.input, marginTop:6 }} value={form.template_url} onChange={set('template_url')} placeholder="Link template Pacdora (opsional)" />
+                  <div style={{ fontSize:11, marginTop:4 }}>
+                    <span onClick={() => { setModelManual(false); setForm(f => ({ ...f, model_layout:'', template_url:'' })) }}
+                      style={{ color:C.orange, cursor:'pointer' }}>← pilih dari Template Library</span>
+                  </div>
+                </>
+              )}
+              {!modelManual && form.template_url && (
+                <div style={{ fontSize:11, color:'#9ca3af', marginTop:4 }}>
+                  Template Pacdora terhubung otomatis ✓
+                </div>
+              )}
             </div>
           </div>
 
@@ -361,6 +433,32 @@ export default function ProdevForm() {
           <div style={{ marginTop:16 }}>
             <label style={s.label}>Finishing Lainnya</label>
             <input style={s.input} value={form.finishing_lainnya} onChange={set('finishing_lainnya')} placeholder="cth. Pond, perforasi, lem samping dan lock" />
+          </div>
+        </div>
+
+        {/* ── File Desain Konsumen ── */}
+        <div style={s.card}>
+          <div style={s.sTitle}>File Desain Konsumen</div>
+          <div style={s.sSub}>
+            File desain dari konsumen (PDF / AI / CDR / EPS / ZIP). Ganti kiriman WhatsApp — prodev download langsung dari sini.
+            Catatan: .cdr/.ai tetap perlu dibuka di CorelDRAW/Illustrator (tidak bisa preview di browser).
+          </div>
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {form.design_files.map((f, i) => (
+              <div key={i} style={{ display:'flex', alignItems:'center', gap:10, padding:'8px 12px', background:C.cream, borderRadius:8, border:`1px solid ${C.border}` }}>
+                <span style={{ fontSize:13, color:C.dark, flex:1, wordBreak:'break-all' }}>📄 {f.name || fileNameFromUrl(f.url)}</span>
+                <a href={f.url} target="_blank" rel="noreferrer" style={{ fontSize:12, color:'#2563eb' }}>Buka ↗</a>
+                <button type="button" style={s.delBtn} onClick={() => setForm(fm => ({ ...fm, design_files: fm.design_files.filter((_, idx) => idx !== i) }))}>✕</button>
+              </div>
+            ))}
+            <div>
+              <button type="button" disabled={uploadingDesign} onClick={() => designRef.current?.click()}
+                style={{ ...s.addBtn, padding:'8px 16px' }}>
+                {uploadingDesign ? 'Mengunggah...' : '+ Upload File Desain'}
+              </button>
+              <input ref={designRef} type="file" accept={DESIGN_FILE_ACCEPT} style={{ display:'none' }}
+                onChange={async e => { await uploadDesignFile(e.target.files[0]); e.target.value = '' }} />
+            </div>
           </div>
         </div>
 

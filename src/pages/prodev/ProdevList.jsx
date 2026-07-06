@@ -86,7 +86,7 @@ export default function ProdevList() {
     .filter(o => {
       const t = search.trim().toLowerCase()
       if (!t) return true
-      return [o.customer_name, o.brand_name, o.kode_order].some(v => (v || '').toLowerCase().includes(t))
+      return [o.customer_name, o.nama_customer, o.brand_name, o.kode_order].some(v => (v || '').toLowerCase().includes(t))
     })
 
   return (
@@ -154,8 +154,11 @@ export default function ProdevList() {
                       <span style={s.badge(o.form_type === 'fps' ? C.orange : '#1251A3')}>{FORM_TYPE_SHORT[o.form_type]}</span>
                     </td>
                     <td style={{ ...s.td, fontSize:11.5, whiteSpace:'nowrap' }}>{o.kode_order || '—'}</td>
-                    <td style={{ ...s.td, fontWeight:600 }}>{o.customer_name}</td>
-                    <td style={s.td}>{o.brand_name || '—'}<div style={{ fontSize:11, color:'#9ca3af' }}>{o.jenis_kemasan}</div></td>
+                    <td style={{ ...s.td, fontWeight:600 }}>
+                      {o.customer_name}
+                      {o.nama_customer && <div style={{ fontSize:11, color:C.brown, fontWeight:500 }}>{o.nama_customer}</div>}
+                    </td>
+                    <td style={s.td}>{o.brand_name || '—'}<div style={{ fontSize:11, color:'#9ca3af' }}>{o.jenis_kemasan}{o.model_layout ? ` · ${o.model_layout}` : ''}</div></td>
                     <td style={{ ...s.td, whiteSpace:'nowrap' }}>{fmtDate(o.deadline)}</td>
                     <td style={s.td}>{names[o.layouter_id] || '—'}</td>
                     <td style={s.td}><span style={s.badge(STATUS_COLOR[st])}>{STATUS_LABEL[st]}</span></td>

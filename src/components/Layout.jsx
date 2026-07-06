@@ -66,6 +66,14 @@ const BoxIcon = ({ active }) => (
   </svg>
 )
 
+const TemplateIcon = ({ active }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 2 2 7l10 5 10-5-10-5Z" />
+    <path d="m2 12 10 5 10-5" />
+    <path d="m2 17 10 5 10-5" />
+  </svg>
+)
+
 const sidebarItems = [
   { path: '/potong-kertas', label: 'Potong Kertas', Icon: CutIcon },
   { path: '/directory', label: 'Direktori', Icon: BookIcon },
@@ -133,10 +141,13 @@ export default function Layout({ children, title, beforeNavigate }) {
           // Menu Prodev: hanya untuk sales yang ditandai innersales
           ...(profile?.role === 'sales' && profile?.is_innersales
             ? [{ path:'/prodev', label:'Prodev', Icon: BoxIcon }] : []),
+          // Template Library: prodev, innersales, & manager
+          ...((profile?.role === 'prodev' || profile?.role === 'manager' || (profile?.role === 'sales' && profile?.is_innersales))
+            ? [{ path:'/prodev/templates', label:'Template', Icon: TemplateIcon }] : []),
           ...sidebarItems,
         ].map(item => {
           const active = item.path === '/prodev'
-            ? location.pathname.startsWith('/prodev')
+            ? (location.pathname.startsWith('/prodev') && location.pathname !== '/prodev/templates')
             : location.pathname === item.path
           const { Icon } = item
           return (
