@@ -69,9 +69,16 @@ export default function ProdevList() {
   }
 
   async function deleteOrder(o) {
-    if (!confirm(`Hapus ${FORM_TYPE_SHORT[o.form_type]} untuk ${o.customer_name}? Hanya bisa selama layout belum dikerjakan.`)) return
-    const { error } = await supabase.from('prodev_orders').delete().eq('id', o.id)
-    if (error) alert('Gagal menghapus: ' + error.message)
+    const sudahSelesai = !!o.tanggal_selesai_layout
+    const pesan = sudahSelesai
+      ? `⚠ Hapus PERMANEN ${FORM_TYPE_SHORT[o.form_type]} "${o.customer_name}"?\n\nOrder ini SUDAH dikerjakan. Menghapusnya juga menghilangkannya dari data & KPI Prodev. Tindakan ini tidak bisa dibatalkan.`
+      : `Hapus ${FORM_TYPE_SHORT[o.form_type]} untuk ${o.customer_name}?`
+    if (!confirm(pesan)) return
+    const { data, error } = await supabase.from('prodev_orders').delete().eq('id', o.id).select()
+    if (error) { alert('Gagal menghapus: ' + error.message); return }
+    if (!data || data.length === 0) {
+      alert('Tidak terhapus. Kemungkinan: migration izin hapus belum dijalankan, atau ini bukan order milikmu.')
+    }
   }
 
   const counts = { all: 0, layout: 0, rakit: 0, terima: 0, selesai: 0 }
@@ -247,10 +254,12 @@ export default function ProdevList() {
                     )}
                     <td style={{ ...s.td, whiteSpace:'nowrap' }}>
                       {profile?.role !== 'manager' && !o.tanggal_selesai_layout && (
-                        <>
-                          <button onClick={() => navigate(`/prodev/edit/${o.id}`)} style={{ padding:'4px 10px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', color:C.brown, marginRight:6 }}>Edit</button>
-                          <button onClick={() => deleteOrder(o)} style={{ padding:'4px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626', marginRight:6 }}>Hapus</button>
-                        </>
+                        <button onClick={() => navigate(`/prodev/edit/${o.id}`)} style={{ padding:'4px 10px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', color:C.brown, marginRight:6 }}>Edit</button>
+                      )}
+                      {profile?.role !== 'manager' && (
+                        <button onClick={() => deleteOrder(o)}
+                          title={o.tanggal_selesai_layout ? 'Hapus permanen (order sudah dikerjakan)' : 'Hapus order'}
+                          style={{ padding:'4px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626', marginRight:6 }}>Hapus</button>
                       )}
                       {profile?.role !== 'manager' && o.revisi_konsumen > 0 && (
                         <button onClick={() => navigate(`/prodev/revisi/${o.id}`)}
