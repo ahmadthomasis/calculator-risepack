@@ -189,6 +189,7 @@ export default function ProdevQueue() {
   const [typeFilter, setTypeFilter] = useState('all')
   const [mineOnly, setMineOnly] = useState(false)
   const [makerFilter, setMakerFilter] = useState('all')  // filter per sample maker (manager)
+  const [layouterFilter, setLayouterFilter] = useState('all')  // filter per layouter (manager)
   const [detailId, setDetailId] = useState(null)
   const [pulse, setPulse]   = useState(false)
   const [busyId, setBusyId] = useState(null)
@@ -314,6 +315,13 @@ export default function ProdevQueue() {
     .map(([id, n]) => ({ id, name: names[id] || '—', n }))
     .sort((a, b) => b.n - a.n)
 
+  // Ranking layouter (dari layouter_id yang ditugaskan tiap order) — untuk manager
+  const layouterCounts = {}
+  orders.forEach(o => { if (o.layouter_id) layouterCounts[o.layouter_id] = (layouterCounts[o.layouter_id] || 0) + 1 })
+  const layouterRanking = Object.entries(layouterCounts)
+    .map(([id, n]) => ({ id, name: names[id] || '—', n }))
+    .sort((a, b) => b.n - a.n)
+
   const filtered = orders
     .filter(o => {
       const st = deriveStatus(o)
@@ -324,6 +332,7 @@ export default function ProdevQueue() {
       return true
     })
     .filter(o => typeFilter === 'all' || o.form_type === typeFilter)
+    .filter(o => layouterFilter === 'all' || o.layouter_id === layouterFilter)
     .filter(o => makerFilter === 'all' || o.sample_maker_id === makerFilter)
     .filter(o => !mineOnly || o.layouter_id === profile?.id || o.sample_maker_id === profile?.id)
 
@@ -345,9 +354,14 @@ export default function ProdevQueue() {
         <Stat label="Selesai"         value={counts.selesai} color="#16a34a" />
       </div>
 
-      {isManager && makerRanking.length > 0 && (
-        <div style={{ fontSize:12.5, color:'#6b7280', marginBottom:14 }}>
-          <b style={{ color:C.brown }}>Sample maker terbanyak (rakit selesai):</b> {makerRanking.slice(0, 3).map(m => `${m.name} (${m.n})`).join(' · ')}
+      {isManager && (layouterRanking.length > 0 || makerRanking.length > 0) && (
+        <div style={{ fontSize:12.5, color:'#6b7280', marginBottom:14, display:'flex', flexDirection:'column', gap:3 }}>
+          {layouterRanking.length > 0 && (
+            <div><b style={{ color:C.brown }}>Layouter terbanyak (order ditugaskan):</b> {layouterRanking.slice(0, 3).map(l => `${l.name} (${l.n})`).join(' · ')}</div>
+          )}
+          {makerRanking.length > 0 && (
+            <div><b style={{ color:C.brown }}>Sample maker terbanyak (rakit selesai):</b> {makerRanking.slice(0, 3).map(m => `${m.name} (${m.n})`).join(' · ')}</div>
+          )}
         </div>
       )}
 
@@ -369,6 +383,13 @@ export default function ProdevQueue() {
             <option value="fps">FPS saja</option>
             <option value="fsa">FSA saja</option>
           </select>
+          {isManager && layouterRanking.length > 0 && (
+            <select value={layouterFilter} onChange={e => setLayouterFilter(e.target.value)} title="Filter per layouter"
+              style={{ padding:'6px 10px', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12.5, outline:'none', background:'#fff', color:C.dark }}>
+              <option value="all">Semua Layouter</option>
+              {layouterRanking.map(l => <option key={l.id} value={l.id}>{l.name} ({l.n})</option>)}
+            </select>
+          )}
           {isManager && makerRanking.length > 0 && (
             <select value={makerFilter} onChange={e => setMakerFilter(e.target.value)} title="Filter per sample maker (yang menyelesaikan rakit)"
               style={{ padding:'6px 10px', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12.5, outline:'none', background:'#fff', color:C.dark }}>
