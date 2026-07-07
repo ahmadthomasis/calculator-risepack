@@ -16,6 +16,7 @@ const managerTabs = [
   { path: '/estimator',    label: 'Estimator' },
   { path: '/purchasing',   label: 'Purchasing' },
   { path: '/prodev-queue', label: 'Prodev' },
+  { path: '/prodev',       label: 'Innersales' },
 ]
 
 const HomeIcon = ({ active }) => (
