@@ -36,6 +36,7 @@ export default function ProdevList() {
   const [names, setNames]     = useState({})     // profil id -> full_name
   const [filter, setFilter]   = useState('all')  // all|layout|rakit|terima|selesai
   const [typeFilter, setTypeFilter] = useState('all') // all|fps|fsa
+  const [creatorFilter, setCreatorFilter] = useState('all') // filter per innersales (created_by)
   const [search, setSearch]   = useState('')
   const [savingId, setSavingId] = useState(null)
 
@@ -80,9 +81,17 @@ export default function ProdevList() {
     if (counts[st] !== undefined) counts[st]++
   })
 
+  // Ranking innersales (pembuat FPS/FSA) — urut terbanyak. Untuk manager.
+  const creatorCounts = {}
+  orders.filter(o => !o.is_cancelled).forEach(o => { creatorCounts[o.created_by] = (creatorCounts[o.created_by] || 0) + 1 })
+  const creatorRanking = Object.entries(creatorCounts)
+    .map(([id, n]) => ({ id, name: names[id] || '—', n }))
+    .sort((a, b) => b.n - a.n)
+
   const filtered = orders
     .filter(o => filter === 'all' ? !o.is_cancelled : deriveStatus(o) === filter)
     .filter(o => typeFilter === 'all' || o.form_type === typeFilter)
+    .filter(o => creatorFilter === 'all' || o.created_by === creatorFilter)
     .filter(o => {
       const t = search.trim().toLowerCase()
       if (!t) return true
@@ -101,11 +110,24 @@ export default function ProdevList() {
 
       <div style={s.card}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
-          <div style={{ fontSize:16, fontWeight:700, color:C.dark, marginRight:'auto' }}>
-            {profile?.role === 'manager' ? 'Semua Order Prodev' : 'Order Prodev Saya'}
+          <div style={{ marginRight:'auto' }}>
+            <div style={{ fontSize:16, fontWeight:700, color:C.dark }}>
+              {profile?.role === 'manager' ? 'Semua Order Prodev' : 'Order Prodev Saya'}
+            </div>
+            {profile?.role === 'manager' && creatorRanking.length > 0 && (
+              <div style={{ fontSize:11.5, color:'#9ca3af', marginTop:2 }}>
+                Innersales terbanyak: {creatorRanking.slice(0, 3).map(c => `${c.name} (${c.n})`).join(' · ')}
+              </div>
+            )}
           </div>
           <input placeholder="Cari customer / brand / kode order..." value={search} onChange={e => setSearch(e.target.value)}
             style={{ padding:'8px 12px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:13, outline:'none', width:230 }} />
+          {profile?.role === 'manager' && (
+            <select style={s.selectMini} value={creatorFilter} onChange={e => setCreatorFilter(e.target.value)} title="Filter per innersales (pembuat)">
+              <option value="all">Semua Innersales ({orders.filter(o => !o.is_cancelled).length})</option>
+              {creatorRanking.map(c => <option key={c.id} value={c.id}>{c.name} ({c.n})</option>)}
+            </select>
+          )}
           <select style={s.selectMini} value={typeFilter} onChange={e => setTypeFilter(e.target.value)}>
             <option value="all">FPS + FSA</option>
             <option value="fps">FPS saja</option>
@@ -153,7 +175,10 @@ export default function ProdevList() {
                     <td style={s.td}>
                       <span style={s.badge(o.form_type === 'fps' ? C.orange : '#1251A3')}>{FORM_TYPE_SHORT[o.form_type]}</span>
                     </td>
-                    <td style={{ ...s.td, fontSize:11.5, whiteSpace:'nowrap' }}>{o.kode_order || '—'}</td>
+                    <td style={{ ...s.td, fontSize:11.5, whiteSpace:'nowrap' }}>
+                      {o.kode_order || '—'}
+                      {profile?.role === 'manager' && <div style={{ fontSize:10.5, color:'#9ca3af' }}>oleh {names[o.created_by] || '—'}</div>}
+                    </td>
                     <td style={{ ...s.td, fontWeight:600 }}>
                       {o.customer_name}
                       {o.nama_customer && <div style={{ fontSize:11, color:C.brown, fontWeight:500 }}>{o.nama_customer}</div>}
