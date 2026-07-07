@@ -188,6 +188,7 @@ export default function ProdevQueue() {
   const [filter, setFilter] = useState('aktif')  // aktif|layout|rakit|selesai|all
   const [typeFilter, setTypeFilter] = useState('all')
   const [mineOnly, setMineOnly] = useState(false)
+  const [makerFilter, setMakerFilter] = useState('all')  // filter per sample maker (manager)
   const [detailId, setDetailId] = useState(null)
   const [pulse, setPulse]   = useState(false)
   const [busyId, setBusyId] = useState(null)
@@ -306,6 +307,13 @@ export default function ProdevQueue() {
     else counts.selesai++ // terima + selesai dianggap selesai dari sisi prodev
   })
 
+  // Ranking sample maker (dari order yang rakit-nya sudah selesai) — untuk manager
+  const makerCounts = {}
+  orders.forEach(o => { if (o.sample_maker_id) makerCounts[o.sample_maker_id] = (makerCounts[o.sample_maker_id] || 0) + 1 })
+  const makerRanking = Object.entries(makerCounts)
+    .map(([id, n]) => ({ id, name: names[id] || '—', n }))
+    .sort((a, b) => b.n - a.n)
+
   const filtered = orders
     .filter(o => {
       const st = deriveStatus(o)
@@ -316,6 +324,7 @@ export default function ProdevQueue() {
       return true
     })
     .filter(o => typeFilter === 'all' || o.form_type === typeFilter)
+    .filter(o => makerFilter === 'all' || o.sample_maker_id === makerFilter)
     .filter(o => !mineOnly || o.layouter_id === profile?.id || o.sample_maker_id === profile?.id)
 
   const isManager     = profile?.role === 'manager'
@@ -336,6 +345,12 @@ export default function ProdevQueue() {
         <Stat label="Selesai"         value={counts.selesai} color="#16a34a" />
       </div>
 
+      {isManager && makerRanking.length > 0 && (
+        <div style={{ fontSize:12.5, color:'#6b7280', marginBottom:14 }}>
+          <b style={{ color:C.brown }}>Sample maker terbanyak (rakit selesai):</b> {makerRanking.slice(0, 3).map(m => `${m.name} (${m.n})`).join(' · ')}
+        </div>
+      )}
+
       <div style={s.card}>
         <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:14, flexWrap:'wrap' }}>
           <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginRight:'auto' }}>
@@ -354,6 +369,13 @@ export default function ProdevQueue() {
             <option value="fps">FPS saja</option>
             <option value="fsa">FSA saja</option>
           </select>
+          {isManager && makerRanking.length > 0 && (
+            <select value={makerFilter} onChange={e => setMakerFilter(e.target.value)} title="Filter per sample maker (yang menyelesaikan rakit)"
+              style={{ padding:'6px 10px', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12.5, outline:'none', background:'#fff', color:C.dark }}>
+              <option value="all">Semua Sample Maker</option>
+              {makerRanking.map(m => <option key={m.id} value={m.id}>{m.name} ({m.n})</option>)}
+            </select>
+          )}
           {!isManager && (
             <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:C.brown, cursor:'pointer' }}>
               <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} style={{ cursor:'pointer' }} />
