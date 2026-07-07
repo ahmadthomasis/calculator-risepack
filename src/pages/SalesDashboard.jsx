@@ -108,6 +108,8 @@ export default function SalesDashboard() {
   const [showForm, setShowForm]   = useState(false)
   const [uploading, setUploading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [salesFilter, setSalesFilter] = useState('all')   // filter per sales (manager)
+  const [names, setNames]         = useState({})          // profil id -> full_name
   const [editingId, setEditingId] = useState(null)
   const [editingStatus, setEditingStatus] = useState(null)
   const fileRef = useRef()
@@ -133,6 +135,9 @@ export default function SalesDashboard() {
       .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name)')
       .order('submitted_at', { ascending: false })
     setRequests(data || [])
+
+    const { data: profs } = await supabase.from('profiles').select('id, full_name')
+    setNames(Object.fromEntries((profs || []).map(p => [p.id, p.full_name])))
   }
 
   async function updateDealStatus(quotationId, newStatus) {
@@ -293,9 +298,18 @@ export default function SalesDashboard() {
   const progress = requests.filter(r => r.status === 'in_progress').length
   const done     = requests.filter(r => r.status === 'done').length
   const subtypes = PRODUCT_TYPES[form.product_category] || []
-  const filteredRequests = requests.filter(r =>
-    !searchTerm.trim() || (r.customer_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase())
-  )
+
+  // Ranking sales (pembuat request) — urut terbanyak. Untuk manager.
+  const salesCounts = {}
+  requests.forEach(r => { if (r.sales_id) salesCounts[r.sales_id] = (salesCounts[r.sales_id] || 0) + 1 })
+  const salesRanking = Object.entries(salesCounts)
+    .map(([id, n]) => ({ id, name: names[id] || '—', n }))
+    .sort((a, b) => b.n - a.n)
+  const isManager = profile?.role === 'manager'
+
+  const filteredRequests = requests
+    .filter(r => salesFilter === 'all' || r.sales_id === salesFilter)
+    .filter(r => !searchTerm.trim() || (r.customer_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase()))
 
   return (
     <Layout title="Request Harga">
@@ -320,8 +334,22 @@ export default function SalesDashboard() {
       )}
 
       <div style={{ marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
-        <div style={{ fontSize:16, fontWeight:600, color:C.dark }}>Request Harga Saya</div>
+        <div>
+          <div style={{ fontSize:16, fontWeight:600, color:C.dark }}>{isManager ? 'Semua Request Harga' : 'Request Harga Saya'}</div>
+          {isManager && salesRanking.length > 0 && (
+            <div style={{ fontSize:11.5, color:'#9ca3af', marginTop:2 }}>
+              Sales terbanyak: {salesRanking.slice(0, 3).map(sr => `${sr.name} (${sr.n})`).join(' · ')}
+            </div>
+          )}
+        </div>
         <div style={{ display:'flex', gap:10, alignItems:'center' }}>
+          {isManager && salesRanking.length > 0 && (
+            <select value={salesFilter} onChange={e => setSalesFilter(e.target.value)} title="Filter per sales (pembuat request)"
+              style={{ padding:'8px 12px', borderRadius:8, border:`1px solid ${C.border}`, fontSize:13, outline:'none', background:'#fff', color:C.dark }}>
+              <option value="all">Semua Sales ({requests.length})</option>
+              {salesRanking.map(sr => <option key={sr.id} value={sr.id}>{sr.name} ({sr.n})</option>)}
+            </select>
+          )}
           <input
             type="text"
             placeholder="Cari nama customer..."
@@ -565,7 +593,10 @@ export default function SalesDashboard() {
               }))
               return (
                 <tr key={r.id}>
-                  <td style={s.td}><span style={{ fontFamily:'monospace', fontSize:12, color:C.brown }}>{r.request_number}</span></td>
+                  <td style={s.td}>
+                    <span style={{ fontFamily:'monospace', fontSize:12, color:C.brown }}>{r.request_number}</span>
+                    {isManager && <div style={{ fontSize:10.5, color:'#9ca3af' }}>oleh {names[r.sales_id] || '—'}</div>}
+                  </td>
                   <td style={s.td}><div style={{ fontWeight:500 }}>{r.customer_name}</div></td>
                   <td style={s.td}>
                     <div style={{ fontSize:13 }}>{r.product_type}</div>
