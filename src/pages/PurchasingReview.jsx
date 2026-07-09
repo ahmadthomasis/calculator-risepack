@@ -361,6 +361,30 @@ export default function PurchasingReview() {
             * Jumlah selisih harga satuan dari item yang sudah dibandingkan — bukan total harga jual, hanya indikator kasar arah selisih.
           </div>
         )}
+
+        {/* Gambar Referensi dari Sales */}
+        {(() => {
+          const imgs = Array.isArray(request?.reference_images) && request.reference_images.length > 0
+            ? request.reference_images
+            : (request?.reference_image ? [request.reference_image] : [])
+          if (imgs.length === 0) return null
+          return (
+            <div style={{ marginTop:12, borderTop:`0.5px solid ${C.border}`, paddingTop:12 }}>
+              <div style={{ fontSize:11, color:'#9ca3af', marginBottom:8 }}>🖼️ Gambar Referensi</div>
+              <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+                {imgs.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noopener noreferrer" title="Klik untuk perbesar">
+                    <img
+                      src={url}
+                      alt={`referensi-${i+1}`}
+                      style={{ width:80, height:80, objectFit:'cover', borderRadius:8, border:`0.5px solid ${C.border}`, cursor:'pointer', display:'block' }}
+                    />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )
+        })()}
       </div>
 
       {/* ── 6 SECTION TABEL DETAIL ── */}
@@ -591,5 +615,6 @@ export default function PurchasingReview() {
     </Layout>
   )
 }
+
 
 
