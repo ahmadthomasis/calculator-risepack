@@ -302,14 +302,14 @@ export default function ManagerDashboard() {
               <table style={{ width:'100%', borderCollapse:'collapse' }}>
                 <thead>
                   <tr>
-                    {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Sumber','Purchasing','Tanggal',''].map(h => (
+                    {['Customer','Produk','Qty','Harga Jual','Per Unit','Status','Sumber','Sales','Purchasing','Tanggal',''].map(h => (
                       <th key={h} style={{ textAlign:'left', padding:'8px 10px', fontSize:12, color:'#9ca3af', fontWeight:500, borderBottom:'2px solid #f3f4f6', position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {tableQuotations.length === 0 && (
-                    <tr><td colSpan={9} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Tidak ada quotation yang cocok</td></tr>
+                    <tr><td colSpan={10} style={{ padding:32, textAlign:'center', color:'#9ca3af', fontSize:13 }}>Tidak ada quotation yang cocok</td></tr>
                 )}
                 {tableQuotations.map(q => (
                   <tr key={q.id}>
@@ -345,6 +345,9 @@ export default function ManagerDashboard() {
                       ) : (
                         <span style={{ padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:500, background:'#f1efe8', color:'#5f5e5a' }}>Internal</span>
                       )}
+                    </td>
+                    <td style={{ padding:'10px', fontSize:12, color:'#374151' }}>
+                      {q.requests?.profiles?.full_name || '—'}
                     </td>
                     <td style={{ padding:'10px' }}>
                       {!q.purchasing_status ? (
