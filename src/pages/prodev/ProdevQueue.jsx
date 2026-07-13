@@ -191,6 +191,7 @@ export default function ProdevQueue() {
   const [makerFilter, setMakerFilter] = useState('all')  // filter per sample maker (manager)
   const [layouterFilter, setLayouterFilter] = useState('all')  // filter per layouter (manager)
   const [detailId, setDetailId] = useState(null)
+  const [searchTerm, setSearchTerm] = useState('')
   const [pulse, setPulse]   = useState(false)
   const [busyId, setBusyId] = useState(null)
   const [uploadingResult, setUploadingResult] = useState(false)
@@ -335,6 +336,18 @@ export default function ProdevQueue() {
     .filter(o => layouterFilter === 'all' || o.layouter_id === layouterFilter)
     .filter(o => makerFilter === 'all' || o.sample_maker_id === makerFilter)
     .filter(o => !mineOnly || o.layouter_id === profile?.id || o.sample_maker_id === profile?.id)
+    .filter(o => {
+      if (!searchTerm.trim()) return true
+      const q = searchTerm.toLowerCase()
+      return (
+        (o.customer_name || '').toLowerCase().includes(q) ||
+        (o.nama_customer || '').toLowerCase().includes(q) ||
+        (o.brand_name || '').toLowerCase().includes(q) ||
+        (o.jenis_kemasan || '').toLowerCase().includes(q) ||
+        (o.innersales_name || '').toLowerCase().includes(q) ||
+        (o.rsp_number || '').toLowerCase().includes(q)
+      )
+    })
 
   const isManager     = profile?.role === 'manager'
   const isLayouter    = profile?.role === 'prodev'
@@ -403,6 +416,17 @@ export default function ProdevQueue() {
               Tugas saya saja
             </label>
           )}
+        </div>
+
+        {/* Search box */}
+        <div style={{ marginBottom:12 }}>
+          <input
+            type="text"
+            placeholder="Cari customer, produk, innersales, nomor RSP..."
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            style={{ width:'100%', padding:'8px 14px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:13, outline:'none', boxSizing:'border-box', color:'#374151' }}
+          />
         </div>
 
         <div style={{ overflowX:'auto' }}>
