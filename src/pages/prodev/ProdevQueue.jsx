@@ -429,11 +429,11 @@ export default function ProdevQueue() {
           />
         </div>
 
-        <div style={{ overflowX:'auto' }}>
+        <div style={{ overflow:'auto', maxHeight:'62vh' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:1150 }}>
             <thead><tr>
               {['Tipe','Customer','Produk','Innersales','Deadline','Layouter','Status','Selesai Layout','Selesai Rakit','Ket. Waktu','Dummy Final','Aksi'].map(h => (
-                <th key={h} style={s.th}>{h}</th>
+                <th key={h} style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
