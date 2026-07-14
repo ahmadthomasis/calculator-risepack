@@ -58,7 +58,7 @@ export default function EstimatorQueue() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name)')
+      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name, price_per_unit, quantity)')
       .order('priority', { ascending: false })
       .order('submitted_at', { ascending: true })
     setRequests(data || [])
@@ -159,6 +159,7 @@ export default function EstimatorQueue() {
               <th style={s.th}>Customer</th>
               <th style={s.th}>Spesifikasi</th>
               <th style={s.th}>Qty</th>
+              <th style={s.th}>Harga/pcs</th>
               <th style={s.th}>Sales</th>
               <th style={s.th}>Waktu</th>
               <th style={s.th}>Status</th>
@@ -170,7 +171,7 @@ export default function EstimatorQueue() {
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={11} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
+              <tr><td colSpan={12} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
                 Tidak ada request
               </td></tr>
             )}
@@ -219,6 +220,24 @@ export default function EstimatorQueue() {
                       ? r.quantities
                       : (r.quantity ? [r.quantity] : [])
                     return qtys.map(q => q.toLocaleString('id-ID')).join(' / ')
+                  })()}
+                </td>
+                <td style={s.td}>
+                  {(() => {
+                    // Tampilkan harga/pcs dari quotation aktif per qty
+                    const activeQuots = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)
+                    if (activeQuots.length === 0) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
+                    return (
+                      <div style={{ display:'flex', flexDirection:'column', gap:2 }}>
+                        {activeQuots.map((qt, i) => (
+                          qt.price_per_unit > 0
+                            ? <div key={i} style={{ fontSize:12, fontWeight:500, color:'#E8760A' }}>
+                                Rp {Math.round(qt.price_per_unit).toLocaleString('id-ID')}
+                              </div>
+                            : <span key={i} style={{ color:'#d1d5db', fontSize:12 }}>—</span>
+                        ))}
+                      </div>
+                    )
                   })()}
                 </td>
                 <td style={s.td}>{r.profiles?.full_name}</td>
