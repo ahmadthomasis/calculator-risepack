@@ -71,7 +71,7 @@ export default function ManagerDashboard() {
     const [{ data: reqs }, { data: quots }] = await Promise.all([
       supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)')
         .gte('submitted_at', startInclusive.toISOString()).lte('submitted_at', endInclusive.toISOString()),
-      supabase.from('quotations').select('*, requests(id, customer_name, product_type, product_category, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
+      supabase.from('quotations').select('*, requests(id, customer_name, product_type, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
         .gte('created_at', startInclusive.toISOString()).lte('created_at', endInclusive.toISOString())
         .eq('is_active', true).eq('is_draft', false),
     ])
@@ -124,7 +124,7 @@ export default function ManagerDashboard() {
       return new Date(b.updated_at || 0) - new Date(a.updated_at || 0)
     })
     return list
-  }, [filteredQuotations, tableSearch, tableDealFilter, tablePurchFilter, tableSort])
+  }, [filteredQuotations, tableSearch, tableDealFilter, tablePurchFilter, tableSort, tableCategoryFilter])
 
   // Semua stats pakai filteredRequests & filteredQuotations
   const totalReq    = filteredRequests.length
