@@ -38,6 +38,7 @@ export default function ManagerDashboard() {
   const [endDate,    setEndDate]    = useState(todayStr)
   const [lastSeen]   = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
   const [salesFilter, setSalesFilter] = useState('all')
+  const [tableCategoryFilter, setTableCategoryFilter] = useState('all')
   const [tableSearch, setTableSearch] = useState('')
   const [tableDealFilter, setTableDealFilter] = useState('')
   const [tablePurchFilter, setTablePurchFilter] = useState('')
@@ -70,7 +71,7 @@ export default function ManagerDashboard() {
     const [{ data: reqs }, { data: quots }] = await Promise.all([
       supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)')
         .gte('submitted_at', startInclusive.toISOString()).lte('submitted_at', endInclusive.toISOString()),
-      supabase.from('quotations').select('*, requests(id, customer_name, product_type, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
+      supabase.from('quotations').select('*, requests(id, customer_name, product_type, product_category, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
         .gte('created_at', startInclusive.toISOString()).lte('created_at', endInclusive.toISOString())
         .eq('is_active', true).eq('is_draft', false),
     ])
@@ -92,6 +93,15 @@ export default function ManagerDashboard() {
     ? quotations
     : quotations.filter(q => q.requests?.profiles?.full_name === salesFilter)
 
+  // Helper: ambil kategori dari product_category atau fallback dari product_type
+  function getCategory(q) {
+    if (q.requests?.product_category) return q.requests.product_category
+    const t = (q.requests?.product_type || '').toLowerCase()
+    if (t.includes('corrugated') || t.includes('mailer box') || t === 'b1' || t === 'dus sepatu' || t === 'seal-end') return 'Corrugated'
+    if (t.includes('hardbox') || t.includes('2 piece') || t.includes('3 piece') || t.includes('flip') || t.includes('sleeve/slip') || t.includes('foldable') || t.includes('neck box') || t.includes('double flip')) return 'Hardbox'
+    return 'Softbox'
+  }
+
   // tableQuotations: untuk tabel saja, dengan search + filter deal + filter purchasing + sort
   const tableQuotations = useMemo(() => {
     let list = [...filteredQuotations]
@@ -103,6 +113,7 @@ export default function ManagerDashboard() {
       )
     }
     if (tableDealFilter) list = list.filter(x => x.deal_status === tableDealFilter)
+    if (tableCategoryFilter !== 'all') list = list.filter(x => getCategory(x) === tableCategoryFilter)
     if (tablePurchFilter === 'none') list = list.filter(x => !x.purchasing_status)
     else if (tablePurchFilter) list = list.filter(x => x.purchasing_status === tablePurchFilter)
     list.sort((a, b) => {
@@ -273,6 +284,13 @@ export default function ManagerDashboard() {
                 value={tableSearch} onChange={e => setTableSearch(e.target.value)}
                 style={{ flex:1, minWidth:160, height:32, padding:'0 10px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', outline:'none' }}
               />
+              <select value={tableCategoryFilter} onChange={e => setTableCategoryFilter(e.target.value)}
+                style={{ height:32, padding:'0 8px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', background:'#fff', outline:'none', color: tableCategoryFilter !== 'all' ? '#1d4ed8' : '#374151', fontWeight: tableCategoryFilter !== 'all' ? 600 : 400 }}>
+                <option value="all">Semua Kategori</option>
+                <option value="Hardbox">Hardbox</option>
+                <option value="Softbox">Softbox</option>
+                <option value="Corrugated">Corrugated</option>
+              </select>
               <select value={tableDealFilter} onChange={e => setTableDealFilter(e.target.value)}
                 style={{ height:32, padding:'0 8px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', background:'#fff', outline:'none' }}>
                 <option value="">Semua Status</option>
@@ -314,7 +332,22 @@ export default function ManagerDashboard() {
                 {tableQuotations.map(q => (
                   <tr key={q.id}>
                     <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.customer_name}</td>
-                    <td style={{ padding:'10px', fontSize:13 }}>{q.requests?.product_type}</td>
+                    <td style={{ padding:'10px' }}>
+                      {(() => {
+                        const cat = getCategory(q)
+                        const colorMap = {
+                          'Hardbox':    { bg:'#FDF6EC', color:'#5C3D2E' },
+                          'Softbox':    { bg:'#EDF4FF', color:'#1251A3' },
+                          'Corrugated': { bg:'#F0FDF4', color:'#166534' },
+                        }
+                        const c = colorMap[cat] || { bg:'#f3f4f6', color:'#6b7280' }
+                        return (
+                          <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:600, background:c.bg, color:c.color }}>
+                            {cat}
+                          </span>
+                        )
+                      })()}
+                    </td>
                     <td style={{ padding:'10px', fontSize:13 }}>{fmt(q.requests?.quantity)}</td>
                     <td style={{ padding:'10px', fontSize:13, fontWeight:500 }}>{idr(q.selling_price)}</td>
                     <td style={{ padding:'10px', fontSize:13 }}>{idr(q.price_per_unit)}</td>
