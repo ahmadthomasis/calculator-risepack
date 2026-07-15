@@ -160,9 +160,9 @@ export default function ProdevList() {
           ))}
         </div>
 
-        <div style={{ overflowX:'auto' }}>
+        <div style={{ maxHeight:600, overflowY:'auto', overflowX:'auto', border:'1px solid #f3f4f6', borderRadius:8 }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:1300 }}>
-            <thead><tr>
+            <thead style={{ position:'sticky', top:0, zIndex:1, background:'#f9fafb' }}><tr>
               {['Tipe','Kode Order','Customer','Produk','Deadline','Layouter','Status','Selesai Layout','Selesai Rakit','Ket. Waktu','Hari','Diterima','Rev. Kons.','Rev. Prodev','Kepuasan','Deal','Bayar', formTypeHasFsa(filtered) ? 'Dummy Final' : null,'Aksi']
                 .filter(Boolean).map(h => <th key={h} style={s.th}>{h}</th>)}
             </tr></thead>
@@ -263,9 +263,9 @@ export default function ProdevList() {
                       )}
                       {profile?.role !== 'manager' && o.revisi_konsumen > 0 && (
                         <button onClick={() => navigate(`/prodev/revisi/${o.id}`)}
-                          title="Buat FPS baru untuk revisi konsumen (isian ter-copy dari order ini)"
-                          style={{ padding:'4px 10px', background:'#faf5ff', border:'1px solid #e9d5ff', borderRadius:6, fontSize:12, cursor:'pointer', color:'#7c3aed', fontWeight:600 }}>
-                          ⟳ FPS Ulang · Revisi {(o.revisi_ke || 0) + 1}
+                          title={o.form_type === 'fsa' ? 'Buat FSA baru untuk revisi konsumen (isian ter-copy dari order ini)' : 'Buat FPS baru untuk revisi konsumen (isian ter-copy dari order ini)'}
+                          style={{ padding:'4px 10px', background: o.form_type === 'fsa' ? '#eff6ff' : '#faf5ff', border: o.form_type === 'fsa' ? '1px solid #93c5fd' : '1px solid #e9d5ff', borderRadius:6, fontSize:12, cursor:'pointer', color: o.form_type === 'fsa' ? '#1d4ed8' : '#7c3aed', fontWeight:600 }}>
+                          ⟳ {o.form_type === 'fsa' ? 'FSA' : 'FPS'} Ulang · Revisi {(o.revisi_ke || 0) + 1}
                         </button>
                       )}
                     </td>
