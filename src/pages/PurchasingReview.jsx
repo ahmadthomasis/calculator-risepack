@@ -375,8 +375,11 @@ export default function PurchasingReview() {
           </div>
           <div>
             <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Harga Estimator</div>
-            <div style={{ fontWeight:500 }}>{idr(quotation.selling_price)}</div>
-            <div style={{ fontSize:11, color:'#9ca3af' }}>≈ {idr(quotation.price_per_unit)} /pcs</div>
+            <div style={{ fontWeight:500 }}>{idr(quotation.total_cost)}</div>
+            <div style={{ fontSize:11, color:'#9ca3af' }}>
+              ≈ {idr(quotation.quantity > 0 ? Math.round(quotation.total_cost / quotation.quantity) : 0)} /pcs
+              <span style={{ marginLeft:6, opacity:0.7 }}>(modal)</span>
+            </div>
           </div>
           <div>
             <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Harga Purchasing</div>
@@ -389,17 +392,22 @@ export default function PurchasingReview() {
           </div>
           <div>
             <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Selisih Total</div>
-            <div style={{ fontWeight:500, color: !hasAtLeastOnePrice ? '#9ca3af' : totalPurchasingWithFallback - quotation.selling_price > 0 ? '#A32D2D' : totalPurchasingWithFallback - quotation.selling_price < 0 ? '#3b6d11' : C.dark }}>
-              {totalPurchasingWithFallback != null
-                ? `${totalPurchasingWithFallback - quotation.selling_price > 0 ? '+' : ''}${idr(Math.round(totalPurchasingWithFallback - quotation.selling_price))}`
-                : '—'}
-            </div>
+            {(() => {
+              const diff = totalPurchasingWithFallback - (quotation.total_cost || 0)
+              return (
+                <div style={{ fontWeight:500, color: totalPurchasingWithFallback == null ? '#9ca3af' : diff > 0 ? '#A32D2D' : diff < 0 ? '#3b6d11' : C.dark }}>
+                  {totalPurchasingWithFallback != null
+                    ? `${diff > 0 ? '+' : ''}${idr(Math.round(diff))}`
+                    : '—'}
+                </div>
+              )
+            })()}
           </div>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Dikirim</div><div style={{ fontWeight:500 }}>{quotation.sent_to_purchasing_at ? new Date(quotation.sent_to_purchasing_at).toLocaleDateString('id-ID') : '—'}</div></div>
         </div>
         {hasAtLeastOnePrice && (
           <div style={{ fontSize:11, color:'#9ca3af', marginTop:8 }}>
-            * Harga Purchasing = item yang sudah diisi pakai harga purchasing, item belum diisi fallback ke harga estimator. Selisih Total = Harga Purchasing − Harga Estimator.
+            * Harga Purchasing = item terisi pakai harga purchasing, item belum diisi fallback ke subtotal estimator. Harga Estimator = total modal (tanpa margin). Selisih Total = Purchasing − Modal Estimator.
           </div>
         )}
 
