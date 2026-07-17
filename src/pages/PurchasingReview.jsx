@@ -234,6 +234,36 @@ export default function PurchasingReview() {
   const hasAtLeastOnePrice = filledComparisons.length > 0
   const totalDiff = filledComparisons.reduce((sum, c) => sum + (Number(c.purchasing_price) - Number(c.estimator_price || 0)), 0)
 
+  // Total harga purchasing lengkap:
+  // - Item yang sudah diisi purchasing → pakai harga purchasing × qty
+  // - Item yang belum diisi → pakai harga estimator (subtotal) sebagai fallback
+  const totalPurchasingWithFallback = (() => {
+    if (!quotation) return null
+    const SECTIONS = ['material_cost','cetak_cost','emboss_laminasi','material_proses','finishing_wo','additional_cost']
+    let total = 0
+    SECTIONS.forEach(secKey => {
+      const rows = quotation[secKey]
+      if (!Array.isArray(rows)) return
+      rows.forEach((row, i) => {
+        const c = comparisons[`${secKey}-${i}`]
+        const qty = Number(row.quantity || quotation.quantity || 0)
+        if (c?.purchasing_price != null && c.purchasing_price !== '') {
+          // Sudah diisi purchasing: harga/pcs × qty
+          total += Number(c.purchasing_price) * qty
+        } else {
+          // Belum diisi: fallback ke subtotal estimator
+          total += Number(row.subtotal || 0)
+        }
+      })
+    })
+    return total
+  })()
+
+  // Harga purchasing per pcs
+  const purchasingPerUnit = totalPurchasingWithFallback != null && quotation?.quantity > 0
+    ? totalPurchasingWithFallback / quotation.quantity
+    : null
+
   async function saveComparisons() {
     const rows = Object.entries(comparisons)
       .filter(([, c]) => c.purchasing_price != null && c.purchasing_price !== '')
@@ -349,16 +379,27 @@ export default function PurchasingReview() {
             <div style={{ fontSize:11, color:'#9ca3af' }}>≈ {idr(quotation.price_per_unit)} /pcs</div>
           </div>
           <div>
-            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Selisih harga terisi</div>
-            <div style={{ fontWeight:500, color: !hasAtLeastOnePrice ? '#9ca3af' : totalDiff > 0 ? '#A32D2D' : totalDiff < 0 ? '#3b6d11' : C.dark }}>
-              {hasAtLeastOnePrice ? `${totalDiff > 0 ? '+' : ''}Rp ${fmt(totalDiff)}` : '—'}
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Harga Purchasing</div>
+            <div style={{ fontWeight:500, color: totalPurchasingWithFallback != null ? C.dark : '#9ca3af' }}>
+              {totalPurchasingWithFallback != null ? idr(Math.round(totalPurchasingWithFallback)) : '—'}
+            </div>
+            {purchasingPerUnit != null && (
+              <div style={{ fontSize:11, color:'#9ca3af' }}>≈ {idr(Math.round(purchasingPerUnit))} /pcs</div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Selisih Total</div>
+            <div style={{ fontWeight:500, color: !hasAtLeastOnePrice ? '#9ca3af' : totalPurchasingWithFallback - quotation.selling_price > 0 ? '#A32D2D' : totalPurchasingWithFallback - quotation.selling_price < 0 ? '#3b6d11' : C.dark }}>
+              {totalPurchasingWithFallback != null
+                ? `${totalPurchasingWithFallback - quotation.selling_price > 0 ? '+' : ''}${idr(Math.round(totalPurchasingWithFallback - quotation.selling_price))}`
+                : '—'}
             </div>
           </div>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Dikirim</div><div style={{ fontWeight:500 }}>{quotation.sent_to_purchasing_at ? new Date(quotation.sent_to_purchasing_at).toLocaleDateString('id-ID') : '—'}</div></div>
         </div>
         {hasAtLeastOnePrice && (
           <div style={{ fontSize:11, color:'#9ca3af', marginTop:8 }}>
-            * Jumlah selisih harga satuan dari item yang sudah dibandingkan — bukan total harga jual, hanya indikator kasar arah selisih.
+            * Harga Purchasing = item yang sudah diisi pakai harga purchasing, item belum diisi fallback ke harga estimator. Selisih Total = Harga Purchasing − Harga Estimator.
           </div>
         )}
 
