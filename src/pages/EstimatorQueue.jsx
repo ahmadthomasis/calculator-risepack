@@ -200,10 +200,18 @@ export default function EstimatorQueue() {
                             {imgs.map((url, i) => (
                               <img
                                 key={i}
-                                src={url}
+                                src={url.includes('/storage/v1/object/public/')
+                                  ? url.replace('/object/public/', '/render/image/public/') + '?width=160&height=160&resize=cover&quality=60'
+                                  : url}
                                 alt={`referensi ${i+1}`}
-                                style={{ width:78, height:78, borderRadius:6, border:'1px solid #e5e7eb', cursor:'pointer', objectFit:'cover' }}
+                                loading="lazy"
+                                decoding="async"
+                                style={{ width:78, height:78, borderRadius:6, border:'1px solid #e5e7eb', cursor:'pointer', objectFit:'cover', background:'#f3f4f6' }}
                                 onClick={() => window.open(url, '_blank')}
+                                onError={e => {
+                                  // Fallback ke URL asli kalau image transform tidak tersedia (Free plan)
+                                  if (e.target.src !== url) e.target.src = url
+                                }}
                                 title="Klik untuk lihat ukuran penuh"
                               />
                             ))}
