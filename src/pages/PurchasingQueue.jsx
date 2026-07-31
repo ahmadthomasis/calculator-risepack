@@ -20,6 +20,7 @@ export default function PurchasingQueue() {
   const navigate = useNavigate()
   const [quotations, setQuotations] = useState([])
   const [filter, setFilter] = useState('pending')
+  const [searchTerm, setSearchTerm] = useState('')
   const [pulse, setPulse] = useState(false)
 
   useEffect(() => {
@@ -46,7 +47,18 @@ export default function PurchasingQueue() {
     setQuotations(data || [])
   }
 
-  const filtered = filter === 'all' ? quotations : quotations.filter(q => q.purchasing_status === filter)
+  const filtered = (filter === 'all' ? quotations : quotations.filter(q => q.purchasing_status === filter))
+    .filter(q => {
+      if (!searchTerm.trim()) return true
+      const s = searchTerm.toLowerCase()
+      return (
+        (q.customer_name || '').toLowerCase().includes(s) ||
+        (q.product_type || '').toLowerCase().includes(s) ||
+        (q.requests?.request_number || '').toLowerCase().includes(s) ||
+        (q.requests?.customer_name || '').toLowerCase().includes(s) ||
+        (q.requests?.product_type || '').toLowerCase().includes(s)
+      )
+    })
   const counts = { all: quotations.length, pending: 0, approved: 0, hold: 0, cancelled: 0 }
   quotations.forEach(q => { if (counts[q.purchasing_status] !== undefined) counts[q.purchasing_status]++ })
 
@@ -80,6 +92,13 @@ export default function PurchasingQueue() {
         ))}
       </div>
 
+      <input
+        type="text"
+        placeholder="Cari no. request, customer, atau produk..."
+        value={searchTerm}
+        onChange={e => setSearchTerm(e.target.value)}
+        style={{ width:'100%', padding:'8px 14px', border:'1px solid #e5e7eb', borderRadius:8, fontSize:13, outline:'none', boxSizing:'border-box', marginBottom:12, color:'#374151' }}
+      />
       <div style={{ fontSize:12, color:'#9ca3af', marginBottom:6 }}>{filtered.length} total</div>
       <div style={{ maxHeight:560, overflowY:'auto', border:'1px solid #e5e7eb', borderRadius:8 }}>
         <table style={s.table}>
