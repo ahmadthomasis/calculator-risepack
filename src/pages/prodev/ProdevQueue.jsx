@@ -278,6 +278,14 @@ export default function ProdevQueue() {
     setBusyId(null)
   }
 
+  async function setSource(o, val) {
+    setBusyId(o.id)
+    const { error } = await supabase.from('prodev_orders')
+      .update({ sample_source: val || null }).eq('id', o.id)
+    if (error) alert('Gagal: ' + error.message)
+    setBusyId(null)
+  }
+
   // ── Upload hasil layout (dieline export) ke bucket prodev-files ──
   async function uploadResult(o, file) {
     if (!file) return
@@ -432,7 +440,7 @@ export default function ProdevQueue() {
         <div style={{ overflow:'auto', maxHeight:'62vh' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:1150 }}>
             <thead><tr>
-              {['Tipe','Customer','Produk','Innersales','Deadline','Layouter','Status','Selesai Layout','Selesai Rakit','Ket. Waktu','Dummy Final','Aksi'].map(h => (
+              {['Tipe','Customer','Produk','Innersales','Deadline','Layouter','Status','Selesai Layout','Selesai Rakit','Ket. Waktu','Source','Dummy Final','Aksi'].map(h => (
                 <th key={h} style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
               ))}
             </tr></thead>
@@ -477,6 +485,15 @@ export default function ProdevQueue() {
                     </td>
                     <td style={s.td}>
                       {wRakit ? <span style={s.badge(WAKTU_COLOR[wRakit])}>{wRakit}</span> : '—'}
+                    </td>
+                    <td style={s.td}>
+                      <select disabled={!isSampleMaker || busy} value={o.sample_source || ''}
+                        onChange={e => setSource(o, e.target.value)}
+                        style={{ padding:'4px 6px', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, outline:'none', background:'#fff', color: o.sample_source ? '#7c3aed' : C.dark, fontWeight: o.sample_source ? 600 : 400 }}>
+                        <option value="">—</option>
+                        <option value="risepack">Risepack</option>
+                        <option value="vendor">Vendor</option>
+                      </select>
                     </td>
                     <td style={s.td}>
                       {o.form_type === 'fsa' ? (
