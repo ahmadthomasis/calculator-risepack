@@ -253,8 +253,12 @@ export default function ProdevList() {
                       </td>
                     )}
                     <td style={{ ...s.td, whiteSpace:'nowrap' }}>
-                      {profile?.role !== 'manager' && !o.tanggal_selesai_layout && (
-                        <button onClick={() => navigate(`/prodev/edit/${o.id}`)} style={{ padding:'4px 10px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', color:C.brown, marginRight:6 }}>Edit</button>
+                      {profile?.role !== 'manager' && (
+                        o.tanggal_selesai_layout ? (
+                          <button onClick={() => navigate(`/prodev/edit/${o.id}?mode=view`)} style={{ padding:'4px 10px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', color:C.brown, marginRight:6 }}>Lihat</button>
+                        ) : (
+                          <button onClick={() => navigate(`/prodev/edit/${o.id}`)} style={{ padding:'4px 10px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', color:C.brown, marginRight:6 }}>Edit</button>
+                        )
                       )}
                       {profile?.role !== 'manager' && (
                         <button onClick={() => deleteOrder(o)}
