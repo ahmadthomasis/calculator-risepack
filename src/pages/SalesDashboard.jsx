@@ -111,6 +111,7 @@ export default function SalesDashboard() {
   const [salesFilter, setSalesFilter] = useState('all')   // filter per sales (manager)
   const [names, setNames]         = useState({})          // profil id -> full_name
   const [editingId, setEditingId] = useState(null)
+  const [productIndex, setProductIndex] = useState(1)  // counter produk ke-berapa saat tambah beruntun
   const [editingStatus, setEditingStatus] = useState(null)
   const fileRef = useRef()
 
@@ -185,6 +186,7 @@ export default function SalesDashboard() {
     setEditingStatus(null)
     setForm(emptyForm)
     setShowForm(false)
+    setProductIndex(1)
   }
 
   async function uploadFile(file) {
@@ -228,16 +230,14 @@ export default function SalesDashboard() {
     }
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault()
-    setLoading(true)
+  // Build payload dari form saat ini. Return null kalau qty tidak valid.
+  function buildRequestPayload() {
     const qtyNumbers = form.quantities.map(q => parseInt(q)).filter(q => !isNaN(q) && q > 0)
     if (qtyNumbers.length === 0) {
       alert('Isi minimal 1 quantity yang valid.')
-      setLoading(false)
-      return
+      return null
     }
-    const payload = {
+    return {
       customer_name:  form.customer_name,
       product_type:   form.product_type,
       quantities:     qtyNumbers,
@@ -252,11 +252,38 @@ export default function SalesDashboard() {
       reference_image: form.image_urls[0] || '',
       plano_size:     form.luas_permukaan,
       updated_at:     new Date().toISOString(),
-      // spec_updated_at hanya diisi saat EDIT (bukan insert baru),
-      // supaya estimator tahu ada revisi spesifikasi dari sales/manager.
-      // Untuk insert baru, kolom ini dibiarkan null (belum ada revisi).
       ...(editingId ? { spec_updated_at: new Date().toISOString() } : {}),
     }
+  }
+
+  // Reset field per-produk, pertahankan customer_name + priority
+  function resetProductFieldsSales() {
+    setForm(f => ({
+      ...emptyForm,
+      customer_name: f.customer_name,   // dipertahankan
+      priority: f.priority,             // dipertahankan
+    }))
+  }
+
+  // Simpan produk ini lalu siapkan form untuk produk berikutnya
+  async function handleAddProduct() {
+    const payload = buildRequestPayload()
+    if (!payload) return
+    setLoading(true)
+    const { error } = await supabase.from('requests').insert({ ...payload, sales_id: profile.id })
+    setLoading(false)
+    if (error) { alert('Gagal kirim produk: ' + error.message); return }
+    resetProductFieldsSales()
+    setProductIndex(i => i + 1)
+    fetchRequests()
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    setLoading(true)
+    const payload = buildRequestPayload()
+    if (!payload) { setLoading(false); return }
 
     const { data: updData, error } = editingId
       ? await supabase.from('requests').update(payload).eq('id', editingId).select()
@@ -270,6 +297,7 @@ export default function SalesDashboard() {
         setShowForm(false)
         setEditingId(null)
         setEditingStatus(null)
+        setProductIndex(1)
         fetchRequests()
         setTimeout(() => setSuccess(false), 4000)
       } else {
@@ -366,8 +394,15 @@ export default function SalesDashboard() {
       {/* Form */}
       {showForm && (
         <div style={s.card}>
-          <div style={{ fontSize:16, fontWeight:600, color:C.dark, marginBottom:20, paddingBottom:12, borderBottom:`1px solid ${C.border}` }}>
-            {editingId ? 'Edit Request Harga' : 'Form Permintaan Harga'}
+          <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:20, paddingBottom:12, borderBottom:`1px solid ${C.border}` }}>
+            <div style={{ fontSize:16, fontWeight:600, color:C.dark }}>
+              {editingId ? 'Edit Request Harga' : 'Form Permintaan Harga'}
+            </div>
+            {!editingId && productIndex > 1 && (
+              <span style={{ padding:'3px 12px', borderRadius:20, fontSize:13, fontWeight:600, background:C.orange, color:'#fff' }}>
+                Produk ke-{productIndex}
+              </span>
+            )}
           </div>
 
           {editingId && (editingStatus === 'in_progress' || editingStatus === 'done') && (
@@ -546,9 +581,16 @@ export default function SalesDashboard() {
               onChange={e => setForm({...form, notes: e.target.value})}
               placeholder="Informasi lain yang perlu diketahui estimator..." />
 
-            <div style={{ marginTop:20, display:'flex', gap:10 }}>
+            <div style={{ marginTop:20, display:'flex', gap:10, flexWrap:'wrap' }}>
+              {!editingId && (
+                <button type="button" onClick={handleAddProduct} disabled={loading || uploading}
+                  style={{ padding:'10px 20px', background:'#fff', border:`2px solid ${C.orange}`, borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer', color:C.orange }}
+                  title="Simpan produk ini & lanjut input produk lain untuk customer yang sama">
+                  {loading ? 'Menyimpan...' : '+ Tambah Produk Lain'}
+                </button>
+              )}
               <button style={s.btnPrimary} type="submit" disabled={loading || uploading}>
-                {loading ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : 'Kirim Request'}
+                {loading ? 'Menyimpan...' : editingId ? 'Simpan Perubahan' : (productIndex > 1 ? 'Kirim Produk Terakhir' : 'Kirim Request')}
               </button>
               {editingId && (
                 <button type="button" onClick={cancelEdit}
