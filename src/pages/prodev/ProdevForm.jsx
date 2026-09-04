@@ -223,16 +223,19 @@ export default function ProdevForm() {
     }
   }
 
-  async function handleSubmit(e) {
-    e.preventDefault()
-    if (!form.customer_name.trim()) { alert('Nama perusahaan wajib diisi.'); return }
-    if (!form.deadline) { alert('Deadline wajib diisi.'); return }
-    if (!form.layouter_id) { alert('PIC Layouter wajib dipilih. Kalau daftar kosong, minta manager membuat user role Prodev dulu.'); return }
-    if (revisiInfo && !form.keterangan_revisi.trim()) { alert('Keterangan revisi wajib diisi (apa yang harus diperbaiki dari layout sebelumnya?).'); return }
+  // Validasi form sebelum submit — return true kalau valid
+  function validateForm() {
+    if (!form.customer_name.trim()) { alert('Nama perusahaan wajib diisi.'); return false }
+    if (!form.deadline) { alert('Deadline wajib diisi.'); return false }
+    if (!form.layouter_id) { alert('PIC Layouter wajib dipilih. Kalau daftar kosong, minta manager membuat user role Prodev dulu.'); return false }
+    if (revisiInfo && !form.keterangan_revisi.trim()) { alert('Keterangan revisi wajib diisi (apa yang harus diperbaiki dari layout sebelumnya?).'); return false }
+    return true
+  }
 
-    setSaving(true)
+  // Build payload dari state form saat ini
+  function buildPayload() {
     const cleanList = (arr) => arr.map(v => v.trim()).filter(Boolean)
-    const payload = {
+    return {
       form_type: formType,
       kode_order: form.kode_order.trim() || null,
       customer_name: form.customer_name.trim(),
@@ -264,7 +267,31 @@ export default function ProdevForm() {
       design_files: form.design_files,
       layouter_id: form.layouter_id || null,
     }
+  }
 
+  // Reset hanya field per-produk, pertahankan info konsumen (untuk tambah produk)
+  function resetProductFields() {
+    setForm(f => ({
+      ...f,
+      // di-reset (per produk):
+      kode_order:'', jenis_kemasan:'Softbox', model_layout:'', template_url:'',
+      status_jasa:'non_jasa_desain', urgensi:'Dikirim', jumlah_part:'1',
+      jumlah_kebutuhan:'', potensial_omzet:'', dimensi_produk:'', lp_layout:[''],
+      dimensi_kemasan:[''], bahan_kemasan:'', berat_produk:'', finishing:[''],
+      jenis_sambungan:'', finishing_lainnya:'',
+      lampiran_text:'', lampiran_link:'', lampiran_images:[], design_files:[],
+      // dipertahankan: customer_name, nama_customer, contact, brand_name,
+      //                pic_sales, layouter_id, tanggal_pengajuan, deadline
+    }))
+    setModelManual(false)
+  }
+
+  async function handleSubmit(e) {
+    e.preventDefault()
+    if (!validateForm()) return
+
+    setSaving(true)
+    const payload = buildPayload()
     let error
     if (editId) {
       ;({ error } = await supabase.from('prodev_orders').update(payload).eq('id', editId))
@@ -277,6 +304,20 @@ export default function ProdevForm() {
     setSaving(false)
     if (error) { alert('Gagal menyimpan: ' + error.message); return }
     navigate('/prodev')
+  }
+
+  // Simpan produk saat ini lalu reset field per-produk untuk input produk berikutnya
+  async function handleAddProduct() {
+    if (!validateForm()) return
+    setSaving(true)
+    const payload = buildPayload()
+    const { error } = await supabase.from('prodev_orders').insert({ ...payload, created_by: profile.id })
+    setSaving(false)
+    if (error) { alert('Gagal menyimpan produk: ' + error.message); return }
+    resetProductFields()
+    // Scroll ke atas + notif
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    alert('✓ Produk tersimpan! Info konsumen tetap terisi. Silakan isi kode order & detail produk berikutnya.')
   }
 
   if (loading) return <Layout title="Form Prodev"><div style={{ padding:60, textAlign:'center', color:'#9ca3af' }}>Memuat...</div></Layout>
@@ -564,7 +605,16 @@ export default function ProdevForm() {
         </div>
 
         {!isViewMode && (
-          <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginBottom:40 }}>
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginBottom:40, flexWrap:'wrap' }}>
+            {/* Tombol tambah produk — hanya saat mode create (bukan edit/revisi) */}
+            {!editId && !revisiInfo && (
+              <button type="button" onClick={handleAddProduct} disabled={saving} style={{
+                padding:'12px 24px', background:'#fff', color:C.orange, border:`2px solid ${C.orange}`,
+                borderRadius:8, fontSize:15, fontWeight:600, cursor:'pointer', opacity: saving ? 0.6 : 1,
+              }} title="Simpan produk ini & lanjut input produk lain untuk customer yang sama">
+                {saving ? 'Menyimpan...' : '+ Tambah Produk Lain'}
+              </button>
+            )}
             <button type="submit" disabled={saving} style={{
               padding:'12px 28px', background:C.orange, color:'#fff', border:'none',
               borderRadius:8, fontSize:15, fontWeight:600, cursor:'pointer', opacity: saving ? 0.6 : 1,
