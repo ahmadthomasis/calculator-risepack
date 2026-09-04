@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { supabase } from '../../lib/supabase'
 import { useAuth } from '../../lib/AuthContext'
 import Layout from '../../components/Layout'
@@ -53,6 +53,8 @@ const localToday = () => {
 export default function ProdevForm() {
   // Mode create: /prodev/new/:formType — edit: /prodev/edit/:id — revisi: /prodev/revisi/:revisiId
   const { formType: formTypeParam, id: editId, revisiId } = useParams()
+  const [searchParams] = useSearchParams()
+  const isViewMode = searchParams.get('mode') === 'view'
   const { profile } = useAuth()
   const navigate    = useNavigate()
   const fileRef     = useRef()
@@ -290,6 +292,12 @@ export default function ProdevForm() {
       }}>← Kembali ke Prodev</button>
 
       <form onSubmit={handleSubmit} style={{ maxWidth:980 }}>
+        {isViewMode && (
+          <div style={{ background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, padding:'10px 16px', marginBottom:16, fontSize:13, color:'#1d4ed8', fontWeight:500 }}>
+            👁️ Mode Lihat — order sudah dikerjakan, data tidak bisa diubah dari sini.
+          </div>
+        )}
+        <fieldset disabled={isViewMode} style={{ border:'none', padding:0, margin:0, minWidth:0 }}>
 
         {/* ── Banner + keterangan revisi (mode FPS Ulang) ── */}
         {revisiInfo && (
@@ -555,12 +563,15 @@ export default function ProdevForm() {
           </div>
         </div>
 
-        <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginBottom:40 }}>
-          <button type="submit" disabled={saving} style={{
-            padding:'12px 28px', background:C.orange, color:'#fff', border:'none',
-            borderRadius:8, fontSize:15, fontWeight:600, cursor:'pointer', opacity: saving ? 0.6 : 1,
-          }}>{saving ? 'Menyimpan...' : (revisiInfo ? `Kirim Revisi ${revisiInfo.revisi_ke}` : editId ? 'Simpan Perubahan' : `Kirim ${formType.toUpperCase()}`)}</button>
-        </div>
+        {!isViewMode && (
+          <div style={{ display:'flex', justifyContent:'flex-end', gap:10, marginBottom:40 }}>
+            <button type="submit" disabled={saving} style={{
+              padding:'12px 28px', background:C.orange, color:'#fff', border:'none',
+              borderRadius:8, fontSize:15, fontWeight:600, cursor:'pointer', opacity: saving ? 0.6 : 1,
+            }}>{saving ? 'Menyimpan...' : (revisiInfo ? `Kirim Revisi ${revisiInfo.revisi_ke}` : editId ? 'Simpan Perubahan' : `Kirim ${formType.toUpperCase()}`)}</button>
+          </div>
+        )}
+        </fieldset>
       </form>
     </Layout>
   )
