@@ -145,8 +145,17 @@ export default function Calculator() {
   // loadAll() — ambil draft TERBARU saja, lalu hapus duplikat yang lebih lama.
   async function saveDraftFor(qty, state) {
     if (qty == null || !state.requestId || !state.profile) return
-    // Jangan timpa draft kalau qty ini sudah punya quotation FINAL tersimpan
-    if (state.savedQtys.includes(qty)) return
+    // CATATAN: draft DISIMPAN walaupun qty sudah punya quotation final.
+    // Ini supaya revisi yang belum di-klik "Simpan" tidak hilang saat pindah menu.
+    // Saat load, draft yang lebih BARU dari final akan diterapkan sebagai revisi;
+    // draft yang lebih lama dianggap basi dan dibersihkan.
+    //
+    // Untuk mencegah numpuk draft: hapus dulu draft lama untuk qty+request+estimator
+    // ini sebelum insert draft baru, jadi selalu ada maksimal 1 draft per qty.
+    await supabase.from('quotations').delete()
+      .eq('request_id', state.requestId).eq('estimator_id', state.profile.id)
+      .eq('quantity', qty).eq('is_draft', true)
+
     // Jangan simpan draft kosong (tidak ada isian sama sekali di 6 section).
     // Vendor cuma data pembanding tambahan, tidak menggantikan isian 6 section,
     // jadi tidak relevan dipakai sebagai penentu kosong/tidaknya draft.
@@ -334,14 +343,25 @@ export default function Calculator() {
         vendorPricePerPcs: q.vendor_price_per_pcs ?? '',
       }
     })
-    // Isi cache dari DRAFT untuk qty yang BELUM punya quotation final.
-    // Karena drafts sudah terurut terbaru dulu, draft pertama yang ditemukan
-    // untuk tiap qty adalah yang dipakai; sisanya (duplikat lama) ditandai untuk dihapus.
+    // Simpan updated_at dari final quotation per qty (untuk bandingkan dgn draft)
+    const finalUpdatedAt = {}
+    ;(quots || []).forEach(q => { finalUpdatedAt[q.quantity] = q.updated_at })
+
+    // Terapkan DRAFT sebagai revisi. Aturan:
+    // - Qty belum punya final → draft dipakai (auto-save sesi sebelumnya)
+    // - Qty sudah punya final → draft dipakai HANYA kalau draft lebih baru dari final
+    //   (artinya estimator revisi setelah simpan, lalu pindah menu tanpa klik simpan)
+    // - Draft basi (lebih lama dari final, atau duplikat) → dibersihkan
+    // Karena drafts sudah terurut terbaru dulu, draft pertama per qty yang dipakai.
     const staleDraftIds = []
     const seenDraftQtys = new Set()
     ;(drafts || []).forEach(d => {
-      if (qtyCache[d.quantity]) { staleDraftIds.push(d.id); return } // sudah ada final, draft ini basi
       if (seenDraftQtys.has(d.quantity)) { staleDraftIds.push(d.id); return } // duplikat lebih lama, basi
+      const finalTime = finalUpdatedAt[d.quantity]
+      // Kalau ada final DAN draft tidak lebih baru → draft basi
+      if (finalTime && new Date(d.updated_at) <= new Date(finalTime)) {
+        staleDraftIds.push(d.id); return
+      }
       seenDraftQtys.add(d.quantity)
       qtyCache[d.quantity] = {
         material: normGsm(d.material_cost), cetak: d.cetak_cost || [], emboss: d.emboss_laminasi || [],
