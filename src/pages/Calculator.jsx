@@ -87,6 +87,8 @@ const newAdditional= () => ({ id:Date.now(), nama:'', proses:'', keterangan:'', 
 export default function Calculator() {
   const { requestId } = useParams()
   const { profile }   = useAuth()
+  // Path kembali ke antrian estimator: manager pakai /estimator, estimator pakai /
+  const queuePath = profile?.role === 'manager' ? '/estimator' : '/'
   const navigate      = useNavigate()
 
   const [request,  setRequest]  = useState(null)
@@ -715,7 +717,7 @@ export default function Calculator() {
     const allDone = qtyList.every(q => newSavedQtys.includes(q))
     if (allDone) {
       await supabase.from('requests').update({ status:'done', completed_at: new Date().toISOString() }).eq('id', requestId)
-      navigate('/')
+      navigate(queuePath)
     } else {
       const nextQty = qtyList.find(q => !newSavedQtys.includes(q))
       if (nextQty != null) switchQty(nextQty, newSavedQtys)
@@ -730,7 +732,7 @@ export default function Calculator() {
     <Layout title={`Kalkulator — ${request.request_number}`} beforeNavigate={handleBeforeNavigate}>
       {/* Tombol kembali */}
       <button
-        onClick={async () => { await handleBeforeNavigate(); navigate('/') }}
+        onClick={async () => { await handleBeforeNavigate(); navigate(queuePath) }}
         style={{
           display:'flex', alignItems:'center', gap:6, marginBottom:16,
           padding:'8px 14px', background:'#fff', border:`1px solid ${C.border}`,
@@ -1316,7 +1318,7 @@ export default function Calculator() {
           </div>
         </div>
         <div style={{ marginTop:24, display:'flex', gap:12, justifyContent:'flex-end' }}>
-          <button onClick={() => navigate('/')} style={{ padding:'10px 20px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:8, fontSize:14, cursor:'pointer', color:C.dark }}>
+          <button onClick={() => navigate(queuePath)} style={{ padding:'10px 20px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:8, fontSize:14, cursor:'pointer', color:C.dark }}>
             Kembali
           </button>
           <button onClick={handleSave} disabled={saving} style={s.saveBtn}>
