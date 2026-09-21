@@ -31,10 +31,22 @@ const fieldsByCategory = {
   additional:       [{ key:'price', label:'Harga' }, { key:'rate_per_kg', label:'Rate / kg' }, { key:'rate_a', label:'Rate A' }, { key:'rate_b', label:'Rate B' }, { key:'minimum_charge', label:'Min. Charge' }],
 }
 
+const SEGMENT_KEUANGAN_OPTIONS = [
+  'Kertas', 'Plat', 'Pisau', 'Film/HVS', 'Klise Poly', 'Klise Emboss', 'Sample',
+  'Bahan Baku Lainnya', 'Bahan Baku Forming', 'Bahan Baku Sticking', 'Bahan Baku Lem Panas',
+  'Bahan Baku Lem Lapis', 'Bahan Baku Finishing', 'Cetak', 'Laminasi', 'Ongkos Poly',
+  'Ongkos Emboss', 'Spot UV', 'Potong', 'Sticker/ Packaging Support', 'Vendor',
+  'Jasa Pond Luar', 'Jasa Finishing Luar', 'Jasa Grooving Luar', 'Jasa Sticking Luar',
+  'Jasa Forming Luar', 'Jasa Assemblying Luar', 'Packing', 'QC', 'Transport', 'Ngopek',
+  'Mesin Pond', 'Upah Pond', 'Mesin Groving', 'Upah Groving', 'Mesin Sticking', 'Upah Sticking',
+  'Mesin Forming', 'Upah Forming', 'Upah Assemblying', 'Mesin Lem Lapis', 'Upah Lem Lapis',
+  'Mesin Lem Panas', 'Upah Lem Panas',
+]
+
 // Form kosong untuk tambah baru per kategori
 const emptyForm = (category) => ({
   category: category !== 'all' ? category : 'material',
-  name: '', spec: '', unit: 'lembar', gsm: '',
+  name: '', spec: '', unit: 'lembar', gsm: '', segment_keuangan: '',
   price: '', rate_per_kg: '', rate_a: '', rate_b: '',
   minimum_charge: '', harga_mesin: '', qty_threshold: '', rate_per_cm: '',
 })
@@ -75,6 +87,43 @@ function EditableCell({ value, onSave }) {
       title="Klik untuk ubah"
     >
       {fmt(value)}
+    </button>
+  )
+}
+
+function EditableSegmentCell({ value, onSave }) {
+  const [editing, setEditing] = useState(false)
+  const [saving, setSaving] = useState(false)
+
+  const commit = async (val) => {
+    if (val === (value || '')) { setEditing(false); return }
+    setSaving(true)
+    await onSave(val || null)
+    setSaving(false)
+    setEditing(false)
+  }
+
+  if (editing) {
+    return (
+      <select autoFocus value={value || ''} disabled={saving}
+        onChange={e => commit(e.target.value)}
+        onBlur={() => setEditing(false)}
+        style={{ ...s.select, width:'100%', minWidth:170 }}
+      >
+        <option value="">– pilih segment –</option>
+        {SEGMENT_KEUANGAN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+      </select>
+    )
+  }
+
+  return (
+    <button onClick={() => setEditing(true)}
+      style={{ background:'none', border:'1px dashed transparent', borderRadius:6, padding:'4px 8px', cursor:'pointer', fontSize:13, color: value ? C.dark : '#d1d5db', fontWeight: value ? 500 : 400, textAlign:'left', width:'100%' }}
+      onMouseEnter={e => e.currentTarget.style.borderColor = C.border}
+      onMouseLeave={e => e.currentTarget.style.borderColor = 'transparent'}
+      title="Klik untuk ubah"
+    >
+      {value || '– pilih segment –'}
     </button>
   )
 }
@@ -137,6 +186,7 @@ export default function PricingDataset() {
       spec: addForm.spec.trim() || null,
       unit: addForm.unit.trim() || null,
       notes: addForm.gsm.trim() || null,  // GSM disimpan di kolom notes
+      segment_keuangan: addForm.segment_keuangan || null,
       price: parseFloat(addForm.price) || 0,
       is_active: true,
     }
@@ -243,6 +293,14 @@ export default function PricingDataset() {
                   value={addForm.unit}
                   onChange={e => setAddForm(f => ({ ...f, unit: e.target.value }))} />
               </div>
+              <div>
+                <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>Segment Keuangan</div>
+                <select style={{ ...s.select, width:'100%' }} value={addForm.segment_keuangan}
+                  onChange={e => setAddForm(f => ({ ...f, segment_keuangan: e.target.value }))}>
+                  <option value="">– pilih segment –</option>
+                  {SEGMENT_KEUANGAN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
               {addFormFields.map(f => (
                 <div key={f.key}>
                   <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>{f.label}</div>
@@ -321,6 +379,7 @@ export default function PricingDataset() {
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Spec</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>GSM</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Unit</th>
+                    <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Segment Keuangan</th>
                     {activeFieldKeys.map(f => (
                       <th key={f.key} style={{ ...s.th, textAlign:'right', position:'sticky', top:0, background:'#fff', zIndex:1 }}>{f.label}</th>
                     ))}
@@ -346,6 +405,9 @@ export default function PricingDataset() {
                           {row.category === 'material' ? (row.notes || '–') : '–'}
                         </td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.unit || '–'}</td>
+                        <td style={{ ...s.td, minWidth:190 }}>
+                          <EditableSegmentCell value={row.segment_keuangan} onSave={(val) => handleUpdate(row.id, 'segment_keuangan', val)} />
+                        </td>
                         {activeFieldKeys.map(f => (
                           <td key={f.key} style={{ ...s.td, textAlign:'right' }}>
                             {rowFieldKeys.has(f.key) ? (
