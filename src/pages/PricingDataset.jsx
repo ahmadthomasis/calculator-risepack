@@ -273,6 +273,14 @@ export default function PricingDataset() {
                   onChange={e => setAddForm(f => ({ ...f, name: e.target.value }))} />
               </div>
               <div>
+                <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>Segment Keuangan</div>
+                <select style={{ ...s.select, width:'100%' }} value={addForm.segment_keuangan}
+                  onChange={e => setAddForm(f => ({ ...f, segment_keuangan: e.target.value }))}>
+                  <option value="">– pilih segment –</option>
+                  {SEGMENT_KEUANGAN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                </select>
+              </div>
+              <div>
                 <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>Spec</div>
                 <input style={{ ...s.input, width:'100%', boxSizing:'border-box' }}
                   placeholder="cth. 79x109"
@@ -292,14 +300,6 @@ export default function PricingDataset() {
                   placeholder="cth. lembar"
                   value={addForm.unit}
                   onChange={e => setAddForm(f => ({ ...f, unit: e.target.value }))} />
-              </div>
-              <div>
-                <div style={{ fontSize:12, color:'#6b7280', marginBottom:4 }}>Segment Keuangan</div>
-                <select style={{ ...s.select, width:'100%' }} value={addForm.segment_keuangan}
-                  onChange={e => setAddForm(f => ({ ...f, segment_keuangan: e.target.value }))}>
-                  <option value="">– pilih segment –</option>
-                  {SEGMENT_KEUANGAN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-                </select>
               </div>
               {addFormFields.map(f => (
                 <div key={f.key}>
@@ -376,10 +376,10 @@ export default function PricingDataset() {
                   <tr>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Kategori</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Nama</th>
+                    <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Segment Keuangan</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Spec</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>GSM</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Unit</th>
-                    <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Segment Keuangan</th>
                     {activeFieldKeys.map(f => (
                       <th key={f.key} style={{ ...s.th, textAlign:'right', position:'sticky', top:0, background:'#fff', zIndex:1 }}>{f.label}</th>
                     ))}
@@ -400,14 +400,14 @@ export default function PricingDataset() {
                           </span>
                         </td>
                         <td style={s.td}>{row.name}</td>
+                        <td style={{ ...s.td, minWidth:190 }}>
+                          <EditableSegmentCell value={row.segment_keuangan} onSave={(val) => handleUpdate(row.id, 'segment_keuangan', val)} />
+                        </td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.spec || '–'}</td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>
                           {row.category === 'material' ? (row.notes || '–') : '–'}
                         </td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.unit || '–'}</td>
-                        <td style={{ ...s.td, minWidth:190 }}>
-                          <EditableSegmentCell value={row.segment_keuangan} onSave={(val) => handleUpdate(row.id, 'segment_keuangan', val)} />
-                        </td>
                         {activeFieldKeys.map(f => (
                           <td key={f.key} style={{ ...s.td, textAlign:'right' }}>
                             {rowFieldKeys.has(f.key) ? (
