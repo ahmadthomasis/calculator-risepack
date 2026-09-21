@@ -113,6 +113,7 @@ export default function SalesDashboard() {
   const [editingId, setEditingId] = useState(null)
   const [productIndex, setProductIndex] = useState(1)  // counter produk ke-berapa saat tambah beruntun
   const [editingStatus, setEditingStatus] = useState(null)
+  const [dealCodeModal, setDealCodeModal] = useState(null) // { quotationId, code }
   const fileRef = useRef()
 
   useEffect(() => { fetchRequests() }, [])
@@ -133,7 +134,7 @@ export default function SalesDashboard() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name)')
+      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name, kode_order)')
       .order('submitted_at', { ascending: false })
     setRequests(data || [])
 
@@ -143,6 +144,26 @@ export default function SalesDashboard() {
 
   async function updateDealStatus(quotationId, newStatus) {
     await supabase.from('quotations').update({ deal_status: newStatus, updated_at: new Date().toISOString() }).eq('id', quotationId)
+    fetchRequests()
+  }
+
+  // Deal wajib punya Kode Order. Kalau belum ada, buka modal dulu sebelum menyimpan.
+  function handleDealStatusChange(q, newStatus) {
+    if (newStatus === 'deal' && !q.kode_order) {
+      setDealCodeModal({ quotationId: q.id, code: '', mode: 'set-deal' })
+      return
+    }
+    updateDealStatus(q.id, newStatus)
+  }
+
+  async function confirmDealCode() {
+    const code = dealCodeModal.code.trim()
+    if (!code) return
+    const payload = dealCodeModal.mode === 'set-deal'
+      ? { deal_status: 'deal', kode_order: code, updated_at: new Date().toISOString() }
+      : { kode_order: code, updated_at: new Date().toISOString() }
+    await supabase.from('quotations').update(payload).eq('id', dealCodeModal.quotationId)
+    setDealCodeModal(null)
     fetchRequests()
   }
 
@@ -700,19 +721,30 @@ export default function SalesDashboard() {
                                 {row.qty.toLocaleString('id-ID')}:
                               </span>
                             )}
-                            <select
-                              value={row.q.deal_status || 'quoted'}
-                              onChange={e => updateDealStatus(row.q.id, e.target.value)}
-                              style={{
-                                padding:'5px 8px', borderRadius:6, fontSize:12, border:`1px solid ${C.border}`,
-                                background:'#fff', color: DEAL_COLOR[row.q.deal_status] || '#9ca3af', fontWeight:500,
-                              }}
-                            >
-                              <option value="quoted">Belum Diisi</option>
-                              <option value="deal">Deal ✅</option>
-                              <option value="no_deal">No Deal ❌</option>
-                              <option value="followup">Followup 🔄</option>
-                            </select>
+                            <div>
+                              <select
+                                value={row.q.deal_status || 'quoted'}
+                                onChange={e => handleDealStatusChange(row.q, e.target.value)}
+                                style={{
+                                  padding:'5px 8px', borderRadius:6, fontSize:12, border:`1px solid ${C.border}`,
+                                  background:'#fff', color: DEAL_COLOR[row.q.deal_status] || '#9ca3af', fontWeight:500,
+                                }}
+                              >
+                                <option value="quoted">Belum Diisi</option>
+                                <option value="deal">Deal ✅</option>
+                                <option value="no_deal">No Deal ❌</option>
+                                <option value="followup">Followup 🔄</option>
+                              </select>
+                              {row.q.kode_order && (
+                                <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:3, display:'flex', alignItems:'center', gap:4 }}>
+                                  📦 {row.q.kode_order}
+                                  <button type="button"
+                                    onClick={() => setDealCodeModal({ quotationId: row.q.id, code: row.q.kode_order, mode: 'edit' })}
+                                    style={{ background:'none', border:'none', padding:0, cursor:'pointer', color:C.orange, fontSize:10.5 }}
+                                    title="Ubah kode order">✏️</button>
+                                </div>
+                              )}
+                            </div>
                           </div>
                         ) : null)}
                       </div>
@@ -775,6 +807,36 @@ export default function SalesDashboard() {
         </table>
         </div>
       </div>
+
+      {/* Modal wajib isi Kode Order saat status diubah jadi Deal */}
+      {dealCodeModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.4)', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:28, maxWidth:380, width:'90%', boxShadow:'0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontSize:15, fontWeight:600, color:C.dark, marginBottom:8 }}>
+              {dealCodeModal.mode === 'edit' ? 'Ubah Kode Order' : 'Isi Kode Order'}
+            </div>
+            <div style={{ fontSize:13, color:'#6b7280', marginBottom:14 }}>
+              {dealCodeModal.mode === 'edit'
+                ? 'Perbarui kode order untuk quotation ini.'
+                : <>Wajib diisi sebelum status ditandai <b>Deal ✅</b>.</>}
+            </div>
+            <input autoFocus style={s.input} value={dealCodeModal.code}
+              onChange={e => setDealCodeModal(m => ({ ...m, code: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter' && dealCodeModal.code.trim()) confirmDealCode() }}
+              placeholder="contoh: SO-2026-0912" />
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:16 }}>
+              <button onClick={() => setDealCodeModal(null)}
+                style={{ padding:'8px 16px', borderRadius:7, border:`1px solid ${C.border}`, background:'#fff', fontSize:13, cursor:'pointer', color:C.dark }}>
+                Batal
+              </button>
+              <button onClick={confirmDealCode} disabled={!dealCodeModal.code.trim()}
+                style={{ padding:'8px 16px', borderRadius:7, border:'none', background:C.orange, color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer', opacity: dealCodeModal.code.trim() ? 1 : 0.5 }}>
+                {dealCodeModal.mode === 'edit' ? 'Simpan' : 'Simpan & Tandai Deal'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }

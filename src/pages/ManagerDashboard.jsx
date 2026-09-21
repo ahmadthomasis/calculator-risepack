@@ -44,6 +44,7 @@ export default function ManagerDashboard() {
   const [tablePurchFilter, setTablePurchFilter] = useState('')
   const [tableSort, setTableSort] = useState('date_desc')
   const [confirmDelete, setConfirmDelete] = useState(null) // { id, request_id, customer, produk }
+  const [dealCodeModal, setDealCodeModal] = useState(null) // { quotationId, code }
 
   useEffect(() => {
     const t = setTimeout(() => localStorage.setItem(LAST_SEEN_KEY, new Date().toISOString()), 3000)
@@ -166,6 +167,26 @@ export default function ManagerDashboard() {
     const { error } = await supabase.from('requests').delete().eq('id', item.request_id)
     if (error) { alert('Gagal hapus request: ' + error.message); return }
     setConfirmDelete(null)
+    loadData()
+  }
+
+  // Deal wajib punya Kode Order. Kalau belum ada, buka modal dulu sebelum menyimpan.
+  function handleDealStatusChange(q, newStatus) {
+    if (newStatus === 'deal' && !q.kode_order) {
+      setDealCodeModal({ quotationId: q.id, code: '', mode: 'set-deal' })
+      return
+    }
+    supabase.from('quotations').update({ deal_status: newStatus, updated_at: new Date().toISOString() }).eq('id', q.id).then(loadData)
+  }
+
+  async function confirmDealCode() {
+    const code = dealCodeModal.code.trim()
+    if (!code) return
+    const payload = dealCodeModal.mode === 'set-deal'
+      ? { deal_status: 'deal', kode_order: code, updated_at: new Date().toISOString() }
+      : { kode_order: code, updated_at: new Date().toISOString() }
+    await supabase.from('quotations').update(payload).eq('id', dealCodeModal.quotationId)
+    setDealCodeModal(null)
     loadData()
   }
 
@@ -359,15 +380,24 @@ export default function ManagerDashboard() {
                             animation:'pulseDotMgr 1.4s ease-in-out infinite',
                           }} />
                         )}
-                        <select value={q.deal_status} onChange={async e => {
-                          await supabase.from('quotations').update({ deal_status: e.target.value, updated_at: new Date().toISOString() }).eq('id', q.id)
-                          loadData()
-                        }} style={{ padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, background:'#fff', color: DEAL_COLOR[q.deal_status] }}>
-                          <option value="quoted">Belum Diisi</option>
-                          <option value="deal">Deal ✅</option>
-                          <option value="no_deal">No Deal ❌</option>
-                          <option value="followup">Followup 🔄</option>
-                        </select>
+                        <div>
+                          <select value={q.deal_status} onChange={e => handleDealStatusChange(q, e.target.value)}
+                            style={{ padding:'4px 8px', border:'1px solid #d1d5db', borderRadius:6, fontSize:12, background:'#fff', color: DEAL_COLOR[q.deal_status] }}>
+                            <option value="quoted">Belum Diisi</option>
+                            <option value="deal">Deal ✅</option>
+                            <option value="no_deal">No Deal ❌</option>
+                            <option value="followup">Followup 🔄</option>
+                          </select>
+                          {q.kode_order && (
+                            <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:3, display:'flex', alignItems:'center', gap:4 }}>
+                              📦 {q.kode_order}
+                              <button type="button"
+                                onClick={() => setDealCodeModal({ quotationId: q.id, code: q.kode_order, mode: 'edit' })}
+                                style={{ background:'none', border:'none', padding:0, cursor:'pointer', color:'#2563eb', fontSize:10.5 }}
+                                title="Ubah kode order">✏️</button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </td>
                     <td style={{ padding:'10px' }}>
@@ -454,6 +484,37 @@ export default function ManagerDashboard() {
               <button onClick={() => handleDeleteQuotation(confirmDelete)}
                 style={{ padding:'8px 16px', borderRadius:7, border:'none', background:'#dc2626', color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}>
                 Ya, Hapus Permanen
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal wajib isi Kode Order saat status diubah jadi Deal */}
+      {dealCodeModal && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:28, maxWidth:380, width:'90%', boxShadow:'0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ fontSize:15, fontWeight:600, color:'#111', marginBottom:8 }}>
+              {dealCodeModal.mode === 'edit' ? 'Ubah Kode Order' : 'Isi Kode Order'}
+            </div>
+            <div style={{ fontSize:13, color:'#6b7280', marginBottom:14 }}>
+              {dealCodeModal.mode === 'edit'
+                ? 'Perbarui kode order untuk quotation ini.'
+                : <>Wajib diisi sebelum status ditandai <b>Deal ✅</b>.</>}
+            </div>
+            <input autoFocus
+              value={dealCodeModal.code}
+              onChange={e => setDealCodeModal(m => ({ ...m, code: e.target.value }))}
+              onKeyDown={e => { if (e.key === 'Enter' && dealCodeModal.code.trim()) confirmDealCode() }}
+              placeholder="contoh: SO-2026-0912"
+              style={{ width:'100%', padding:'9px 12px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box' }} />
+            <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:16 }}>
+              <button onClick={() => setDealCodeModal(null)}
+                style={{ padding:'8px 16px', borderRadius:7, border:'1px solid #e5e7eb', background:'#fff', fontSize:13, cursor:'pointer' }}>
+                Batal
+              </button>
+              <button onClick={confirmDealCode} disabled={!dealCodeModal.code.trim()}
+                style={{ padding:'8px 16px', borderRadius:7, border:'none', background:'#2563eb', color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer', opacity: dealCodeModal.code.trim() ? 1 : 0.5 }}>
+                {dealCodeModal.mode === 'edit' ? 'Simpan' : 'Simpan & Tandai Deal'}
               </button>
             </div>
           </div>
