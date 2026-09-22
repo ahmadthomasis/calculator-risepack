@@ -79,16 +79,7 @@ const SECTION_COLS = {
   finishing_wo: [
     { label:'Proses',       align:'left',   render: r => r.proses || '—' },
     { label:'Spesifik',     align:'left',   render: r => r.spesifik || '—' },
-    { label:'Harga/pcs',   align:'right',  priceField:'harga_satuan', render: r => (
-        <>
-          <div>{idr(r.harga_satuan)}</div>
-          {(r.pct_upah > 0 || r.pct_bahan > 0 || r.pct_mesin > 0) && (
-            <div style={{ fontSize:10, color:'#9ca3af', fontWeight:400, marginTop:2 }} title="Split otomatis estimator (rumus % Pricing Dataset)">
-              U {idr(Math.round(r.upah_amount))} · B {idr(Math.round(r.bahan_amount))} · M {idr(Math.round(r.mesin_amount))}
-            </div>
-          )}
-        </>
-      ) },
+    { label:'Harga/pcs',   align:'right',  render: r => idr(r.harga_satuan), priceField:'harga_satuan' },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal (×qty)',align:'right',render: r => idr(r.subtotal) },
   ],
@@ -137,6 +128,7 @@ export default function PurchasingReview() {
   const [draftSaved,   setDraftSaved]   = useState(false)
   // const [revisionNote, setRevisionNote] = useState('') -- aktifkan setelah ALTER TABLE
   const [dbAdditional,setDbAdditional]= useState([])
+  const [finSplitRules, setFinSplitRules] = useState({}) // proses -> { pct_upah, pct_bahan, pct_mesin }
 
   useEffect(() => { loadAll() }, [quotationId])
 
@@ -168,6 +160,8 @@ export default function PurchasingReview() {
     const { data: req } = await supabase.from('requests').select('*').eq('id', q.request_id).maybeSingle()
     const { data: comps } = await supabase.from('purchasing_comparisons').select('*').eq('quotation_id', quotationId)
     const { data: addlMaster } = await supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional')
+    const { data: finRules } = await supabase.from('finishing_wo_split_rules').select('*')
+    setFinSplitRules(Object.fromEntries((finRules || []).map(r => [r.proses, r])))
 
     const compMap = {}
     ;(comps || []).forEach(c => {
@@ -579,11 +573,23 @@ export default function PurchasingReview() {
                     return (
                       <tr key={i} style={{ background: i % 2 === 0 ? '#fff' : '#fafaf9' }}>
                         {/* Kolom data estimator */}
-                        {cols.map((col, ci) => (
-                          <td key={ci} style={{ ...tdEst, textAlign: col.align }}>
-                            {col.render(row)}
-                          </td>
-                        ))}
+                        {cols.map((col, ci) => {
+                          // Finishing WO: breakdown Upah/Bahan Baku/Mesin dihitung LIVE dari
+                          // Harga/pcs × rumus % proses saat ini (bukan snapshot lama tersimpan),
+                          // supaya quotation lama pun ikut kebagian begitu rumusnya diisi/diubah.
+                          const splitRule = sec.key === 'finishing_wo' && col.priceField === 'harga_satuan'
+                            ? finSplitRules[row.proses] : null
+                          return (
+                            <td key={ci} style={{ ...tdEst, textAlign: col.align }}>
+                              {col.render(row)}
+                              {splitRule && (Number(splitRule.pct_upah) > 0 || Number(splitRule.pct_bahan) > 0 || Number(splitRule.pct_mesin) > 0) && (
+                                <div style={{ fontSize:10, color:'#9ca3af', fontWeight:400, marginTop:2 }} title="Split otomatis estimator (rumus % Pricing Dataset)">
+                                  U {idr(Math.round(Number(row.harga_satuan) * Number(splitRule.pct_upah) / 100))} · B {idr(Math.round(Number(row.harga_satuan) * Number(splitRule.pct_bahan) / 100))} · M {idr(Math.round(Number(row.harga_satuan) * Number(splitRule.pct_mesin) / 100))}
+                                </div>
+                              )}
+                            </td>
+                          )
+                        })}
                         {/* Input harga purchasing */}
                         {sec.key === 'finishing_wo' ? (
                           <>
