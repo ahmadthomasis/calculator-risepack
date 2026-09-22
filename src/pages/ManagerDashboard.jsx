@@ -170,10 +170,14 @@ export default function ManagerDashboard() {
     loadData()
   }
 
-  // Deal wajib punya Kode Order. Kalau belum ada, buka modal dulu sebelum menyimpan.
+  // Ada perbandingan vendor yang valid untuk dipilih sebagai sumber harga deal?
+  const hasVendorOption = q => q.cost_source === 'vendor' && Number(q.vendor_price_per_pcs) > 0
+
+  // Deal wajib punya Kode Order, dan kalau ada perbandingan vendor, wajib pilih
+  // sumber harga (Vendor / Estimator) juga. Kalau belum lengkap, buka modal dulu.
   function handleDealStatusChange(q, newStatus) {
-    if (newStatus === 'deal' && !q.kode_order) {
-      setDealCodeModal({ quotationId: q.id, code: '', mode: 'set-deal' })
+    if (newStatus === 'deal' && (!q.kode_order || (hasVendorOption(q) && !q.deal_price_source))) {
+      setDealCodeModal({ quotationId: q.id, code: q.kode_order || '', priceSource: q.deal_price_source || '', q, mode: 'set-deal' })
       return
     }
     supabase.from('quotations').update({ deal_status: newStatus, updated_at: new Date().toISOString() }).eq('id', q.id).then(loadData)
@@ -182,9 +186,14 @@ export default function ManagerDashboard() {
   async function confirmDealCode() {
     const code = dealCodeModal.code.trim()
     if (!code) return
+    const needsPriceSource = dealCodeModal.q && hasVendorOption(dealCodeModal.q)
+    if (needsPriceSource && !dealCodeModal.priceSource) return
+    const priceSource = needsPriceSource ? dealCodeModal.priceSource : (dealCodeModal.mode === 'set-deal' ? 'internal' : (dealCodeModal.priceSource || null))
+    // Sumber harga vendor -> cost tidak dipecah per segment, langsung di-tag Segment "Vendor".
+    const segmentKeuangan = priceSource === 'vendor' ? 'Vendor' : null
     const payload = dealCodeModal.mode === 'set-deal'
-      ? { deal_status: 'deal', kode_order: code, updated_at: new Date().toISOString() }
-      : { kode_order: code, updated_at: new Date().toISOString() }
+      ? { deal_status: 'deal', kode_order: code, deal_price_source: priceSource, deal_segment_keuangan: segmentKeuangan, updated_at: new Date().toISOString() }
+      : { kode_order: code, deal_price_source: priceSource, deal_segment_keuangan: segmentKeuangan, updated_at: new Date().toISOString() }
     await supabase.from('quotations').update(payload).eq('id', dealCodeModal.quotationId)
     setDealCodeModal(null)
     loadData()
@@ -389,10 +398,15 @@ export default function ManagerDashboard() {
                             <option value="followup">Followup 🔄</option>
                           </select>
                           {q.kode_order && (
-                            <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:3, display:'flex', alignItems:'center', gap:4 }}>
+                            <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:3, display:'flex', alignItems:'center', gap:4, flexWrap:'wrap' }}>
                               📦 {q.kode_order}
+                              {q.deal_price_source && (
+                                <span title="Sumber harga yang dipakai untuk deal ini">
+                                  · 💰 {q.deal_price_source === 'vendor' ? 'Vendor' : 'Estimator'}
+                                </span>
+                              )}
                               <button type="button"
-                                onClick={() => setDealCodeModal({ quotationId: q.id, code: q.kode_order, mode: 'edit' })}
+                                onClick={() => setDealCodeModal({ quotationId: q.id, code: q.kode_order, priceSource: q.deal_price_source || '', q, mode: 'edit' })}
                                 style={{ background:'none', border:'none', padding:0, cursor:'pointer', color:'#2563eb', fontSize:10.5 }}
                                 title="Ubah kode order">✏️</button>
                             </div>
@@ -489,37 +503,74 @@ export default function ManagerDashboard() {
           </div>
         </div>
       )}
-      {/* Modal wajib isi Kode Order saat status diubah jadi Deal */}
-      {dealCodeModal && (
+      {/* Modal wajib isi Kode Order (+ sumber harga kalau ada perbandingan vendor) saat status diubah jadi Deal */}
+      {dealCodeModal && (() => {
+        const needsPriceSource = dealCodeModal.q && hasVendorOption(dealCodeModal.q)
+        const canSubmit = dealCodeModal.code.trim() && (!needsPriceSource || dealCodeModal.priceSource)
+        return (
         <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.45)', zIndex:999, display:'flex', alignItems:'center', justifyContent:'center' }}>
-          <div style={{ background:'#fff', borderRadius:12, padding:28, maxWidth:380, width:'90%', boxShadow:'0 8px 32px rgba(0,0,0,0.2)' }}>
+          <div style={{ background:'#fff', borderRadius:12, padding:28, maxWidth:420, width:'90%', boxShadow:'0 8px 32px rgba(0,0,0,0.2)' }}>
             <div style={{ fontSize:15, fontWeight:600, color:'#111', marginBottom:8 }}>
-              {dealCodeModal.mode === 'edit' ? 'Ubah Kode Order' : 'Isi Kode Order'}
+              {dealCodeModal.mode === 'edit' ? 'Ubah Detail Deal' : 'Lengkapi Detail Deal'}
             </div>
-            <div style={{ fontSize:13, color:'#6b7280', marginBottom:14 }}>
+            <div style={{ fontSize:13, color:'#6b7280', marginBottom:6 }}>
               {dealCodeModal.mode === 'edit'
-                ? 'Perbarui kode order untuk quotation ini.'
+                ? 'Perbarui kode order / sumber harga untuk quotation ini.'
                 : <>Wajib diisi sebelum status ditandai <b>Deal ✅</b>.</>}
             </div>
+
+            <label style={{ fontSize:12, fontWeight:500, color:'#374151', display:'block', marginTop:12, marginBottom:4 }}>Kode Order</label>
             <input autoFocus
               value={dealCodeModal.code}
               onChange={e => setDealCodeModal(m => ({ ...m, code: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter' && dealCodeModal.code.trim()) confirmDealCode() }}
+              onKeyDown={e => { if (e.key === 'Enter' && canSubmit) confirmDealCode() }}
               placeholder="contoh: SO-2026-0912"
               style={{ width:'100%', padding:'9px 12px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box' }} />
+
+            {needsPriceSource && (
+              <>
+                <label style={{ fontSize:12, fontWeight:500, color:'#374151', display:'block', marginTop:16, marginBottom:6 }}>
+                  Sumber Harga yang Dipakai
+                </label>
+                {[
+                  { value:'vendor', label:'Harga Vendor', price: dealCodeModal.q.vendor_price_per_pcs, sub: dealCodeModal.q.vendor_name || 'vendor' },
+                  { value:'internal', label:'Harga Estimator (proyeksi)', price: dealCodeModal.q.price_per_unit, sub: 'perhitungan internal' },
+                ].map(opt => (
+                  <label key={opt.value} style={{
+                    display:'flex', alignItems:'center', gap:8, padding:'8px 10px', marginBottom:6,
+                    border:`1px solid ${dealCodeModal.priceSource === opt.value ? '#2563eb' : '#e5e7eb'}`,
+                    background: dealCodeModal.priceSource === opt.value ? '#eff6ff' : '#fff',
+                    borderRadius:8, cursor:'pointer', fontSize:13,
+                  }}>
+                    <input type="radio" name="dealPriceSourceMgr" value={opt.value}
+                      checked={dealCodeModal.priceSource === opt.value}
+                      onChange={() => setDealCodeModal(m => ({ ...m, priceSource: opt.value }))} />
+                    <span style={{ flex:1 }}>
+                      <b style={{ color:'#111' }}>{opt.label}</b>
+                      <span style={{ color:'#9ca3af' }}> · {opt.sub}</span>
+                    </span>
+                    <span style={{ fontWeight:600, color:'#111' }}>
+                      {opt.price ? `Rp ${Math.round(opt.price).toLocaleString('id-ID')}/pcs` : '—'}
+                    </span>
+                  </label>
+                ))}
+              </>
+            )}
+
             <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:16 }}>
               <button onClick={() => setDealCodeModal(null)}
                 style={{ padding:'8px 16px', borderRadius:7, border:'1px solid #e5e7eb', background:'#fff', fontSize:13, cursor:'pointer' }}>
                 Batal
               </button>
-              <button onClick={confirmDealCode} disabled={!dealCodeModal.code.trim()}
-                style={{ padding:'8px 16px', borderRadius:7, border:'none', background:'#2563eb', color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer', opacity: dealCodeModal.code.trim() ? 1 : 0.5 }}>
+              <button onClick={confirmDealCode} disabled={!canSubmit}
+                style={{ padding:'8px 16px', borderRadius:7, border:'none', background:'#2563eb', color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer', opacity: canSubmit ? 1 : 0.5 }}>
                 {dealCodeModal.mode === 'edit' ? 'Simpan' : 'Simpan & Tandai Deal'}
               </button>
             </div>
           </div>
         </div>
-      )}
+        )
+      })()}
     </Layout>
   )
 }
