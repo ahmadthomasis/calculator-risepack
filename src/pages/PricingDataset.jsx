@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useCallback } from 'react'
+import { useState, useEffect, useMemo, useCallback, Fragment } from 'react'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
 
@@ -179,7 +179,11 @@ export default function PricingDataset() {
   const handleSplitUpdate = async (proses, next) => {
     setSplitRules(prev => ({ ...prev, [proses]: { ...next, proses } }))
     const { error } = await supabase.from('finishing_wo_split_rules')
-      .upsert({ proses, pct_upah: next.pct_upah || 0, pct_bahan: next.pct_bahan || 0, pct_mesin: next.pct_mesin || 0, updated_at: new Date().toISOString() })
+      .upsert({
+        proses, pct_upah: next.pct_upah || 0, pct_bahan: next.pct_bahan || 0, pct_mesin: next.pct_mesin || 0,
+        segment_upah: next.segment_upah || null, segment_bahan: next.segment_bahan || null, segment_mesin: next.segment_mesin || null,
+        updated_at: new Date().toISOString(),
+      })
     if (error) showToast('error', 'Gagal simpan rumus split: ' + error.message)
     else showToast('success', 'Rumus split disimpan')
   }
@@ -294,36 +298,52 @@ export default function PricingDataset() {
             <div style={{ fontSize:14, fontWeight:600, color:C.dark, marginBottom:4 }}>Rumus Split Finishing WO</div>
             <p style={{ fontSize:12, color:'#9ca3af', marginBottom:14 }}>
               % dari Harga/pcs tiap proses yang otomatis dipecah jadi Upah Pekerja / Bahan Baku / Charge Mesin
-              di halaman Kalkulator (estimator). Idealnya total tiap baris = 100%.
+              di halaman Kalkulator (estimator), masing-masing dengan Segment Keuangan sendiri untuk laporan
+              proyeksi vs real. Idealnya total % tiap baris = 100%.
             </p>
             {finishingProsesList.length === 0 ? (
               <div style={{ fontSize:13, color:'#9ca3af' }}>Belum ada data proses Finishing WO di raw_materials.</div>
             ) : (
-              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+              <div style={{ overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', whiteSpace:'nowrap' }}>
                 <thead>
                   <tr>
                     <th style={s.th}>Proses</th>
-                    <th style={{ ...s.th, textAlign:'right' }}>% Upah Pekerja</th>
+                    <th style={{ ...s.th, textAlign:'right' }}>% Upah</th>
+                    <th style={s.th}>Segment Upah</th>
                     <th style={{ ...s.th, textAlign:'right' }}>% Bahan Baku</th>
-                    <th style={{ ...s.th, textAlign:'right' }}>% Charge Mesin</th>
-                    <th style={{ ...s.th, textAlign:'right' }}>Total</th>
+                    <th style={s.th}>Segment Bahan Baku</th>
+                    <th style={{ ...s.th, textAlign:'right' }}>% Mesin</th>
+                    <th style={s.th}>Segment Mesin</th>
+                    <th style={{ ...s.th, textAlign:'right' }}>Total %</th>
                   </tr>
                 </thead>
                 <tbody>
                   {finishingProsesList.map(proses => {
-                    const rule = splitRules[proses] || { pct_upah:0, pct_bahan:0, pct_mesin:0 }
+                    const rule = splitRules[proses] || { pct_upah:0, pct_bahan:0, pct_mesin:0, segment_upah:'', segment_bahan:'', segment_mesin:'' }
                     const total = (Number(rule.pct_upah)||0) + (Number(rule.pct_bahan)||0) + (Number(rule.pct_mesin)||0)
                     return (
                       <tr key={proses}>
                         <td style={s.td}>{proses}</td>
-                        {['pct_upah','pct_bahan','pct_mesin'].map(f => (
-                          <td key={f} style={{ ...s.td, textAlign:'right' }}>
-                            <input type="number" min="0" max="100"
-                              style={{ ...s.input, width:70, textAlign:'right' }}
-                              value={rule[f] ?? 0}
-                              onChange={e => handleSplitUpdate(proses, { ...rule, [f]: parseFloat(e.target.value) || 0 })}
-                            />
-                          </td>
+                        {[['pct_upah','segment_upah'], ['pct_bahan','segment_bahan'], ['pct_mesin','segment_mesin']].map(([pf, sf]) => (
+                          <Fragment key={pf}>
+                            <td style={{ ...s.td, textAlign:'right' }}>
+                              <input type="number" min="0" max="100"
+                                style={{ ...s.input, width:60, textAlign:'right' }}
+                                value={rule[pf] ?? 0}
+                                onChange={e => handleSplitUpdate(proses, { ...rule, [pf]: parseFloat(e.target.value) || 0 })}
+                              />
+                            </td>
+                            <td style={s.td}>
+                              <select style={{ ...s.select, width:170 }}
+                                value={rule[sf] || ''}
+                                onChange={e => handleSplitUpdate(proses, { ...rule, [sf]: e.target.value })}
+                              >
+                                <option value="">– pilih segment –</option>
+                                {SEGMENT_KEUANGAN_OPTIONS.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+                              </select>
+                            </td>
+                          </Fragment>
                         ))}
                         <td style={{ ...s.td, textAlign:'right', fontWeight:600, color: total === 100 ? '#16a34a' : total === 0 ? '#9ca3af' : '#dc2626' }}>
                           {total}%
@@ -333,6 +353,7 @@ export default function PricingDataset() {
                   })}
                 </tbody>
               </table>
+              </div>
             )}
           </div>
         )}
@@ -485,7 +506,13 @@ export default function PricingDataset() {
                         </td>
                         <td style={s.td}>{row.name}</td>
                         <td style={{ ...s.td, minWidth:190 }}>
-                          <EditableSegmentCell value={row.segment_keuangan} onSave={(val) => handleUpdate(row.id, 'segment_keuangan', val)} />
+                          {row.category === 'finishing_wo' ? (
+                            <span style={{ fontSize:11.5, color:'#9ca3af', fontStyle:'italic' }} title="Segment untuk Finishing WO diatur per komponen (Upah/Bahan Baku/Mesin) di panel Rumus Split Finishing WO">
+                              diatur di Rumus Split ↑
+                            </span>
+                          ) : (
+                            <EditableSegmentCell value={row.segment_keuangan} onSave={(val) => handleUpdate(row.id, 'segment_keuangan', val)} />
+                          )}
                         </td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>{row.spec || '–'}</td>
                         <td style={{ ...s.td, color:'#9ca3af' }}>

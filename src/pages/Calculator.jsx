@@ -591,6 +591,7 @@ export default function Calculator() {
     return {
       ...r, harga_satuan: harga_satuan_net, subtotal_raw, subtotal,
       pct_upah, pct_bahan, pct_mesin, upah_amount, bahan_amount, mesin_amount,
+      segment_upah: split?.segment_upah || null, segment_bahan: split?.segment_bahan || null, segment_mesin: split?.segment_mesin || null,
     }
   }), [finishing, dbFinishing, dbFinishingSplit, request])
 
