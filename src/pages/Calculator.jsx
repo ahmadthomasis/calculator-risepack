@@ -100,6 +100,7 @@ export default function Calculator() {
   const [dbEmboss,    setDbEmboss]    = useState([])
   const [dbMatProses, setDbMatProses] = useState([])
   const [dbFinishing, setDbFinishing] = useState([])
+  const [dbFinishingSplit, setDbFinishingSplit] = useState({}) // proses -> { pct_upah, pct_bahan, pct_mesin }
   const [dbAdditional,setDbAdditional]= useState([])
   const [purchasingData, setPurchasingData] = useState(null)  // { status, comparisons[] } dari validasi purchasing
 
@@ -266,6 +267,7 @@ export default function Calculator() {
       { data: mp },
       { data: fin },
       { data: addl },
+      { data: finSplit },
     ] = await Promise.all([
       supabase.from('requests').select('*').eq('id', requestId).single(),
       supabase.from('raw_materials').select('*').eq('category','material').order('name'),
@@ -274,6 +276,7 @@ export default function Calculator() {
       supabase.from('raw_materials').select('id,name,spec,notes,price,rate_per_cm').eq('category','material_proses').order('name'),
       supabase.from('raw_materials').select('*').eq('category','finishing_wo').order('name'),
       supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional').order('name'),
+      supabase.from('finishing_wo_split_rules').select('*'),
     ])
     // Load semua quotation aktif untuk request ini (bisa lebih dari 1, satu per qty)
     const { data: quots } = await supabase.from('quotations').select('*')
@@ -328,6 +331,7 @@ export default function Calculator() {
     setDbEmboss(emb || [])
     setDbMatProses(mp || [])
     setDbFinishing(fin || [])
+    setDbFinishingSplit(Object.fromEntries((finSplit || []).map(r => [r.proses, r])))
     setDbAdditional(addl || [])
     setQtyList(qtys)
 
@@ -576,8 +580,19 @@ export default function Calculator() {
     const diskon = num(r.diskon)
     const subtotal = subtotal_raw * (1 - diskon/100)
     const harga_satuan_net = harga * (1 - diskon/100)
-    return { ...r, harga_satuan: harga_satuan_net, subtotal_raw, subtotal }
-  }), [finishing, dbFinishing, request])
+    // Split otomatis Upah/Bahan Baku/Mesin dari rumus % per proses (diset di Pricing Dataset)
+    const split = dbFinishingSplit[r.proses]
+    const pct_upah = split ? num(split.pct_upah) : 0
+    const pct_bahan = split ? num(split.pct_bahan) : 0
+    const pct_mesin = split ? num(split.pct_mesin) : 0
+    const upah_amount = harga_satuan_net * pct_upah / 100
+    const bahan_amount = harga_satuan_net * pct_bahan / 100
+    const mesin_amount = harga_satuan_net * pct_mesin / 100
+    return {
+      ...r, harga_satuan: harga_satuan_net, subtotal_raw, subtotal,
+      pct_upah, pct_bahan, pct_mesin, upah_amount, bahan_amount, mesin_amount,
+    }
+  }), [finishing, dbFinishing, dbFinishingSplit, request])
 
   const calcAdditional = useCallback(() => additional.map(r => {
     const match = dbAdditional.find(m => m.name === r.proses)
@@ -1216,7 +1231,14 @@ export default function Calculator() {
                     {finishingSpecs(row.proses).map(s=><option key={s}>{s}</option>)}
                   </select>
                 </td>
-                <td style={s.td}><div style={{ ...s.calc, color:'#16a34a' }}>{idr(row.harga_satuan)}</div></td>
+                <td style={s.td}>
+                  <div style={{ ...s.calc, color:'#16a34a' }}>{idr(row.harga_satuan)}</div>
+                  {(row.pct_upah > 0 || row.pct_bahan > 0 || row.pct_mesin > 0) && (
+                    <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:2, whiteSpace:'nowrap' }} title="Split otomatis dari rumus % di Pricing Dataset">
+                      U {idr(Math.round(row.upah_amount))} · B {idr(Math.round(row.bahan_amount))} · M {idr(Math.round(row.mesin_amount))}
+                    </div>
+                  )}
+                </td>
                 <td style={s.td}><input style={{ ...s.input, width:55 }} type="number" min="0" max="100" value={row.diskon||""} onChange={e => updater(setFinishing)(i,'diskon',e.target.value)} placeholder="0" /></td>
                 <td style={s.td}><div style={s.calcGreen}>{idr(row.subtotal||0)}</div></td>
                 <td style={s.td}><button style={s.delBtn} onClick={() => setFinishing(p=>p.filter((_,idx)=>idx!==i))}>✕</button></td>

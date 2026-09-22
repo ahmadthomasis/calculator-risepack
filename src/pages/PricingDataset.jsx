@@ -157,6 +157,33 @@ export default function PricingDataset() {
 
   useEffect(() => { fetchRows() }, [fetchRows])
 
+  // ── Rumus Split Finishing WO (Upah / Bahan Baku / Mesin) ──────────────────
+  const [finishingProsesList, setFinishingProsesList] = useState([])
+  const [splitRules, setSplitRules] = useState({}) // proses -> { pct_upah, pct_bahan, pct_mesin }
+  const [showSplitPanel, setShowSplitPanel] = useState(false)
+
+  const fetchFinishingSplit = useCallback(async () => {
+    const [{ data: fin }, { data: rules }] = await Promise.all([
+      supabase.from('raw_materials').select('name').eq('category', 'finishing_wo'),
+      supabase.from('finishing_wo_split_rules').select('*'),
+    ])
+    setFinishingProsesList([...new Set((fin || []).map(r => r.name))].sort())
+    setSplitRules(Object.fromEntries((rules || []).map(r => [r.proses, r])))
+  }, [])
+
+  useEffect(() => { fetchFinishingSplit() }, [fetchFinishingSplit])
+
+  // `next` HARUS berisi ketiga field (pct_upah/bahan/mesin) yang sudah digabung
+  // dengan nilai baru oleh caller — bukan dibaca ulang dari state `splitRules`,
+  // supaya aman kalau user ganti 3 input beruntun sebelum re-render sempat commit.
+  const handleSplitUpdate = async (proses, next) => {
+    setSplitRules(prev => ({ ...prev, [proses]: { ...next, proses } }))
+    const { error } = await supabase.from('finishing_wo_split_rules')
+      .upsert({ proses, pct_upah: next.pct_upah || 0, pct_bahan: next.pct_bahan || 0, pct_mesin: next.pct_mesin || 0, updated_at: new Date().toISOString() })
+    if (error) showToast('error', 'Gagal simpan rumus split: ' + error.message)
+    else showToast('success', 'Rumus split disimpan')
+  }
+
   const filtered = useMemo(() => {
     return rows.filter(r => {
       if (categoryFilter !== 'all' && r.category !== categoryFilter) return false
@@ -245,13 +272,70 @@ export default function PricingDataset() {
               Klik nilai harga untuk mengubahnya langsung. Perubahan tersimpan otomatis ke database.
             </p>
           </div>
-          <button
-            onClick={() => { setShowAddForm(v => !v); setAddForm(emptyForm(categoryFilter)) }}
-            style={{ ...s.btn, background: showAddForm ? '#f3f4f6' : C.orange, color: showAddForm ? C.dark : '#fff' }}
-          >
-            {showAddForm ? '✕ Batal' : '+ Tambah Material'}
-          </button>
+          <div style={{ display:'flex', gap:8 }}>
+            <button
+              onClick={() => setShowSplitPanel(v => !v)}
+              style={{ ...s.btn, background: showSplitPanel ? C.brown : '#fff', color: showSplitPanel ? '#fff' : C.brown, border:`1px solid ${C.border}` }}
+            >
+              {showSplitPanel ? '✕ Tutup Rumus Split' : '⚙️ Rumus Split Finishing WO'}
+            </button>
+            <button
+              onClick={() => { setShowAddForm(v => !v); setAddForm(emptyForm(categoryFilter)) }}
+              style={{ ...s.btn, background: showAddForm ? '#f3f4f6' : C.orange, color: showAddForm ? C.dark : '#fff' }}
+            >
+              {showAddForm ? '✕ Batal' : '+ Tambah Material'}
+            </button>
+          </div>
         </div>
+
+        {/* Panel Rumus Split Finishing WO */}
+        {showSplitPanel && (
+          <div style={{ ...s.card, marginBottom:16, borderColor: C.brown }}>
+            <div style={{ fontSize:14, fontWeight:600, color:C.dark, marginBottom:4 }}>Rumus Split Finishing WO</div>
+            <p style={{ fontSize:12, color:'#9ca3af', marginBottom:14 }}>
+              % dari Harga/pcs tiap proses yang otomatis dipecah jadi Upah Pekerja / Bahan Baku / Charge Mesin
+              di halaman Kalkulator (estimator). Idealnya total tiap baris = 100%.
+            </p>
+            {finishingProsesList.length === 0 ? (
+              <div style={{ fontSize:13, color:'#9ca3af' }}>Belum ada data proses Finishing WO di raw_materials.</div>
+            ) : (
+              <table style={{ width:'100%', borderCollapse:'collapse' }}>
+                <thead>
+                  <tr>
+                    <th style={s.th}>Proses</th>
+                    <th style={{ ...s.th, textAlign:'right' }}>% Upah Pekerja</th>
+                    <th style={{ ...s.th, textAlign:'right' }}>% Bahan Baku</th>
+                    <th style={{ ...s.th, textAlign:'right' }}>% Charge Mesin</th>
+                    <th style={{ ...s.th, textAlign:'right' }}>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {finishingProsesList.map(proses => {
+                    const rule = splitRules[proses] || { pct_upah:0, pct_bahan:0, pct_mesin:0 }
+                    const total = (Number(rule.pct_upah)||0) + (Number(rule.pct_bahan)||0) + (Number(rule.pct_mesin)||0)
+                    return (
+                      <tr key={proses}>
+                        <td style={s.td}>{proses}</td>
+                        {['pct_upah','pct_bahan','pct_mesin'].map(f => (
+                          <td key={f} style={{ ...s.td, textAlign:'right' }}>
+                            <input type="number" min="0" max="100"
+                              style={{ ...s.input, width:70, textAlign:'right' }}
+                              value={rule[f] ?? 0}
+                              onChange={e => handleSplitUpdate(proses, { ...rule, [f]: parseFloat(e.target.value) || 0 })}
+                            />
+                          </td>
+                        ))}
+                        <td style={{ ...s.td, textAlign:'right', fontWeight:600, color: total === 100 ? '#16a34a' : total === 0 ? '#9ca3af' : '#dc2626' }}>
+                          {total}%
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        )}
 
         {/* Form Tambah */}
         {showAddForm && (

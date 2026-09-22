@@ -79,7 +79,16 @@ const SECTION_COLS = {
   finishing_wo: [
     { label:'Proses',       align:'left',   render: r => r.proses || '—' },
     { label:'Spesifik',     align:'left',   render: r => r.spesifik || '—' },
-    { label:'Harga/pcs',   align:'right',  render: r => idr(r.harga_satuan), priceField:'harga_satuan' },
+    { label:'Harga/pcs',   align:'right',  priceField:'harga_satuan', render: r => (
+        <>
+          <div>{idr(r.harga_satuan)}</div>
+          {(r.pct_upah > 0 || r.pct_bahan > 0 || r.pct_mesin > 0) && (
+            <div style={{ fontSize:10, color:'#9ca3af', fontWeight:400, marginTop:2 }} title="Split otomatis estimator (rumus % Pricing Dataset)">
+              U {idr(Math.round(r.upah_amount))} · B {idr(Math.round(r.bahan_amount))} · M {idr(Math.round(r.mesin_amount))}
+            </div>
+          )}
+        </>
+      ) },
     { label:'Diskon%',      align:'center', render: r => r.diskon ? `${r.diskon}%` : '0%' },
     { label:'Subtotal (×qty)',align:'right',render: r => idr(r.subtotal) },
   ],
@@ -188,6 +197,28 @@ export default function PurchasingReview() {
     }))
   }
 
+  // Finishing WO: purchasing isi 3 komponen manual (Upah/Bahan Baku/Mesin),
+  // purchasing_price (total, dipakai semua kalkulasi selisih & total yang sudah ada)
+  // otomatis = jumlah ketiganya.
+  function updateFinishingPart(rowIndex, part, value, estimatorPrice, itemName) {
+    const key = `finishing_wo-${rowIndex}`
+    setComparisons(prev => {
+      const cur = prev[key] || {}
+      const parts = {
+        purchasing_upah: cur.purchasing_upah ?? null,
+        purchasing_bahan: cur.purchasing_bahan ?? null,
+        purchasing_mesin: cur.purchasing_mesin ?? null,
+        [`purchasing_${part}`]: value === '' ? null : Number(value),
+      }
+      const filled = [parts.purchasing_upah, parts.purchasing_bahan, parts.purchasing_mesin].filter(v => v != null)
+      const total = filled.length > 0 ? filled.reduce((a, b) => a + Number(b), 0) : null
+      return {
+        ...prev,
+        [key]: { ...cur, ...parts, purchasing_price: total, estimator_price: estimatorPrice, item_name: itemName },
+      }
+    })
+  }
+
   // Helper: hitung harga/pcs additional dari master data (untuk potong & lem samping
   // yang harganya bukan input manual tapi dihitung dari luas/gramasi/panjang)
   function resolveAdditionalHarga(r) {
@@ -278,6 +309,9 @@ export default function PurchasingReview() {
           item_name: c.item_name || null,
           estimator_price: c.estimator_price ?? null,
           purchasing_price: c.purchasing_price,
+          purchasing_upah: c.purchasing_upah ?? null,
+          purchasing_bahan: c.purchasing_bahan ?? null,
+          purchasing_mesin: c.purchasing_mesin ?? null,
           updated_at: new Date().toISOString(),
         }
       })
@@ -510,10 +544,19 @@ export default function PurchasingReview() {
                       <th key={ci} style={{ ...thEst, textAlign: col.align }}>{col.label}</th>
                     ))}
                     {/* Kolom purchasing — garis pembatas biru */}
-                    <th style={{ ...thPurch }}>
-                      Harga/pcs<br />
-                      <span style={{ fontWeight:400, fontSize:10, color:'#378ADD' }}>(Purchasing)</span>
-                    </th>
+                    {sec.key === 'finishing_wo' ? (
+                      <>
+                        <th style={{ ...thPurch }}>Upah<br /><span style={{ fontWeight:400, fontSize:10, color:'#378ADD' }}>(Purchasing)</span></th>
+                        <th style={{ ...thPurch, borderLeft:'none' }}>Bahan Baku<br /><span style={{ fontWeight:400, fontSize:10, color:'#378ADD' }}>(Purchasing)</span></th>
+                        <th style={{ ...thPurch, borderLeft:'none' }}>Mesin<br /><span style={{ fontWeight:400, fontSize:10, color:'#378ADD' }}>(Purchasing)</span></th>
+                        <th style={{ ...thPurch, borderLeft:'none' }}>Total<br /><span style={{ fontWeight:400, fontSize:10, color:'#378ADD' }}>(Purchasing)</span></th>
+                      </>
+                    ) : (
+                      <th style={{ ...thPurch }}>
+                        Harga/pcs<br />
+                        <span style={{ fontWeight:400, fontSize:10, color:'#378ADD' }}>(Purchasing)</span>
+                      </th>
+                    )}
                     <th style={{ ...thPurch, borderLeft:'none' }}>Selisih</th>
                   </tr>
                 </thead>
@@ -542,23 +585,50 @@ export default function PurchasingReview() {
                           </td>
                         ))}
                         {/* Input harga purchasing */}
-                        <td style={tdPurch}>
-                          <input
-                            type="number"
-                            style={{
-                              width:90, padding:'5px 8px', border:`1px solid ${purchPrice != null ? '#378ADD' : C.border}`,
-                              borderRadius:6, fontSize:12, textAlign:'right',
-                              background:'#fff', color:C.dark, outline:'none',
-                            }}
-                            placeholder="belum diisi"
-                            value={purchPrice ?? ''}
-                            onChange={e => updatePrice(
-                              sec.key, i, e.target.value,
-                              Number(estPriceRaw) || 0,
-                              cols[0]?.render(row) || `Row ${i+1}`
-                            )}
-                          />
-                        </td>
+                        {sec.key === 'finishing_wo' ? (
+                          <>
+                            {['upah','bahan','mesin'].map(part => (
+                              <td key={part} style={{ ...tdPurch, borderLeft: part === 'upah' ? undefined : 'none' }}>
+                                <input
+                                  type="number"
+                                  style={{
+                                    width:70, padding:'5px 6px', border:`1px solid ${comp[`purchasing_${part}`] != null ? '#378ADD' : C.border}`,
+                                    borderRadius:6, fontSize:12, textAlign:'right',
+                                    background:'#fff', color:C.dark, outline:'none',
+                                  }}
+                                  placeholder="—"
+                                  value={comp[`purchasing_${part}`] ?? ''}
+                                  onChange={e => updateFinishingPart(
+                                    i, part, e.target.value,
+                                    Number(estPriceRaw) || 0,
+                                    cols[0]?.render(row) || `Row ${i+1}`
+                                  )}
+                                />
+                              </td>
+                            ))}
+                            <td style={{ ...tdPurch, borderLeft:'none', fontWeight:600 }}>
+                              {purchPrice != null ? idr(purchPrice) : <span style={{ color:'#d1d5db', fontWeight:400 }}>belum diisi</span>}
+                            </td>
+                          </>
+                        ) : (
+                          <td style={tdPurch}>
+                            <input
+                              type="number"
+                              style={{
+                                width:90, padding:'5px 8px', border:`1px solid ${purchPrice != null ? '#378ADD' : C.border}`,
+                                borderRadius:6, fontSize:12, textAlign:'right',
+                                background:'#fff', color:C.dark, outline:'none',
+                              }}
+                              placeholder="belum diisi"
+                              value={purchPrice ?? ''}
+                              onChange={e => updatePrice(
+                                sec.key, i, e.target.value,
+                                Number(estPriceRaw) || 0,
+                                cols[0]?.render(row) || `Row ${i+1}`
+                              )}
+                            />
+                          </td>
+                        )}
                         {/* Selisih % */}
                         <td style={{ ...tdPurch, borderLeft:'none', fontWeight:500, color: diffPct == null ? '#d1d5db' : diffPct > 0 ? '#A32D2D' : diffPct < 0 ? '#3b6d11' : C.dark }}>
                           {diffPct == null ? '—' : `${diffPct > 0 ? '+' : ''}${diffPct}%`}
