@@ -11,6 +11,13 @@ const COL_ERP = '#FEF9C3'      // kuning - dari ERP
 const COL_HPP = '#DBEAFE'      // biru - HPP Sales (estimator)
 const COL_COGS = '#FDEBD3'     // krem - COGS Proyeksi (purchasing)
 
+const STATUS_OPTIONS = [
+  { key:'no_estimator', label:'Belum diisi Estimator' },
+  { key:'no_purchasing', label:'Belum divalidasi Purchasing' },
+  { key:'vendor', label:'Vendor' },
+  { key:'complete', label:'Lengkap' },
+]
+
 const s = {
   th: { padding:'8px 10px', fontSize:11, fontWeight:600, textAlign:'left', whiteSpace:'nowrap', borderBottom:`1px solid ${C.border}` },
   td: { padding:'8px 10px', fontSize:13, color:C.dark, borderBottom:`1px solid ${C.cream}`, whiteSpace:'nowrap' },
@@ -38,7 +45,21 @@ export default function DashboardPantau() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [onlyGap, setOnlyGap] = useState(false)
+  const [statusFilter, setStatusFilter] = useState(() => new Set(STATUS_OPTIONS.map(o => o.key)))
+  const [picFilter, setPicFilter] = useState('all')
+  const [tglOrderFrom, setTglOrderFrom] = useState('')
+  const [tglOrderTo, setTglOrderTo] = useState('')
+  const [tglFawFrom, setTglFawFrom] = useState('')
+  const [tglFawTo, setTglFawTo] = useState('')
+
+  function toggleStatus(key) {
+    setStatusFilter(prev => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   useEffect(() => { fetchAll() }, [])
 
@@ -104,6 +125,12 @@ export default function DashboardPantau() {
       const result = [...allKeys].map(key => {
         const erp = erpBySko[key] || null
         const g = grouped[key] || null
+        const isVendor = g?.isVendor || false
+        const hppSales = g?.hppSales || 0
+        const cogsProyeksi = g?.cogsProyeksi || 0
+        const noHpp = !g
+        const notValidated = !!g && !isVendor && cogsProyeksi === hppSales
+        const status = noHpp ? 'no_estimator' : isVendor ? 'vendor' : notValidated ? 'no_purchasing' : 'complete'
         return {
           kode_order: key,
           pic: erp?.sales_name || null,
@@ -114,11 +141,12 @@ export default function DashboardPantau() {
           tgl_faw: erp?.tgl_faw || null,
           jenis_bahan: erp?.jenis_bahan || null,
           modal_sales: erp?.modal_sales ?? null,
-          hppSales: g?.hppSales || 0,
-          cogsProyeksi: g?.cogsProyeksi || 0,
-          isVendor: g?.isVendor || false,
+          hppSales,
+          cogsProyeksi,
+          isVendor,
           erpFound: !!erp,
           quotationFound: !!g,
+          status,
         }
       })
 
@@ -141,20 +169,25 @@ export default function DashboardPantau() {
     setLoading(false)
   }
 
+  const picOptions = useMemo(() => {
+    return [...new Set(rows.map(r => r.pic).filter(Boolean))].sort()
+  }, [rows])
+
   const filtered = useMemo(() => {
     return rows.filter(r => {
       if (search.trim()) {
         const q = search.trim().toLowerCase()
         if (!(r.kode_order || '').toLowerCase().includes(q) && !(r.nama_spk || '').toLowerCase().includes(q) && !(r.nama_produk || '').toLowerCase().includes(q)) return false
       }
-      if (onlyGap) {
-        const noHpp = !r.quotationFound
-        const notValidated = r.quotationFound && !r.isVendor && r.cogsProyeksi === r.hppSales
-        if (!noHpp && !notValidated) return false
-      }
+      if (!statusFilter.has(r.status)) return false
+      if (picFilter !== 'all' && r.pic !== picFilter) return false
+      if (tglOrderFrom && (!r.tgl_order || r.tgl_order < tglOrderFrom)) return false
+      if (tglOrderTo && (!r.tgl_order || r.tgl_order > tglOrderTo)) return false
+      if (tglFawFrom && (!r.tgl_faw || r.tgl_faw < tglFawFrom)) return false
+      if (tglFawTo && (!r.tgl_faw || r.tgl_faw > tglFawTo)) return false
       return true
     })
-  }, [rows, search, onlyGap])
+  }, [rows, search, statusFilter, picFilter, tglOrderFrom, tglOrderTo, tglFawFrom, tglFawTo])
 
   return (
     <Layout title="Dashboard Pantau">
@@ -167,19 +200,64 @@ export default function DashboardPantau() {
           </p>
         </div>
 
-        <div style={{ display:'flex', gap:12, marginBottom:16, alignItems:'center' }}>
+        <div style={{ display:'flex', gap:12, marginBottom:12, alignItems:'center' }}>
           <input
             placeholder="Cari Kode Order, customer, atau produk..."
             value={search} onChange={e => setSearch(e.target.value)}
             style={{ flex:1, padding:'8px 12px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:13, outline:'none' }}
           />
-          <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:13, color:C.brown, cursor:'pointer', whiteSpace:'nowrap' }}>
-            <input type="checkbox" checked={onlyGap} onChange={e => setOnlyGap(e.target.checked)} />
-            Tampilkan yang belum lengkap saja
-          </label>
-          <button onClick={fetchAll} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:C.orange, color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer' }}>
+          <button onClick={fetchAll} style={{ padding:'8px 16px', borderRadius:8, border:'none', background:C.orange, color:'#fff', fontSize:13, fontWeight:500, cursor:'pointer', whiteSpace:'nowrap' }}>
             🔄 Refresh
           </button>
+        </div>
+
+        <div style={{ display:'flex', flexWrap:'wrap', gap:16, alignItems:'flex-end', marginBottom:16, padding:'12px 14px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:10 }}>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Status</div>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+              {STATUS_OPTIONS.map(opt => (
+                <label key={opt.key} style={{ display:'flex', alignItems:'center', gap:5, fontSize:12.5, color:C.brown, cursor:'pointer', whiteSpace:'nowrap' }}>
+                  <input type="checkbox" checked={statusFilter.has(opt.key)} onChange={() => toggleStatus(opt.key)} />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>PIC</div>
+            <select value={picFilter} onChange={e => setPicFilter(e.target.value)}
+              style={{ padding:'6px 10px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:13, outline:'none', background:'#fff' }}>
+              <option value="all">Semua PIC</option>
+              {picOptions.map(p => <option key={p} value={p}>{p}</option>)}
+            </select>
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Tanggal Order</div>
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <input type="date" value={tglOrderFrom} onChange={e => setTglOrderFrom(e.target.value)}
+                style={{ padding:'6px 8px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:12.5, outline:'none' }} />
+              <span style={{ color:'#9ca3af', fontSize:12 }}>s/d</span>
+              <input type="date" value={tglOrderTo} onChange={e => setTglOrderTo(e.target.value)}
+                style={{ padding:'6px 8px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:12.5, outline:'none' }} />
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Tanggal FAW</div>
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <input type="date" value={tglFawFrom} onChange={e => setTglFawFrom(e.target.value)}
+                style={{ padding:'6px 8px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:12.5, outline:'none' }} />
+              <span style={{ color:'#9ca3af', fontSize:12 }}>s/d</span>
+              <input type="date" value={tglFawTo} onChange={e => setTglFawTo(e.target.value)}
+                style={{ padding:'6px 8px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:12.5, outline:'none' }} />
+            </div>
+          </div>
+          {(picFilter !== 'all' || tglOrderFrom || tglOrderTo || tglFawFrom || tglFawTo || statusFilter.size !== STATUS_OPTIONS.length) && (
+            <button
+              onClick={() => { setPicFilter('all'); setTglOrderFrom(''); setTglOrderTo(''); setTglFawFrom(''); setTglFawTo(''); setStatusFilter(new Set(STATUS_OPTIONS.map(o => o.key))) }}
+              style={{ padding:'6px 12px', borderRadius:8, border:`1px solid ${C.border}`, background:'#fff', color:C.brown, fontSize:12, cursor:'pointer' }}>
+              ✕ Reset Filter
+            </button>
+          )}
         </div>
 
         <div style={{ background:'#fff', borderRadius:12, border:`1px solid ${C.border}`, overflow:'hidden' }}>
@@ -210,8 +288,7 @@ export default function DashboardPantau() {
                 </thead>
                 <tbody>
                   {filtered.map(r => {
-                    const noHpp = !r.quotationFound
-                    const notValidated = r.quotationFound && !r.isVendor && r.cogsProyeksi === r.hppSales
+                    const noHpp = r.status === 'no_estimator'
                     return (
                       <tr key={r.kode_order}>
                         <td style={{ ...s.td, color: r.pic ? C.dark : '#d1d5db' }}>{r.pic || '—'}</td>
@@ -232,11 +309,11 @@ export default function DashboardPantau() {
                         <td style={s.td}>
                           {!r.erpFound ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fef2f2', color:'#dc2626' }}>Data ERP belum ada</span>
-                          ) : noHpp ? (
+                          ) : r.status === 'no_estimator' ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fef2f2', color:'#dc2626' }}>⚠️ Belum diisi Estimator</span>
-                          ) : r.isVendor ? (
+                          ) : r.status === 'vendor' ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#f1efe8', color:'#5f5e5a' }}>Vendor</span>
-                          ) : notValidated ? (
+                          ) : r.status === 'no_purchasing' ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fffbeb', color:'#92400e' }}>⚠️ Belum divalidasi Purchasing</span>
                           ) : (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#EAF3DE', color:'#3B6D11' }}>✓ Lengkap</span>
