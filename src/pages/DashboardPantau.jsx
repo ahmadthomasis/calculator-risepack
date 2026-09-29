@@ -107,7 +107,6 @@ export default function DashboardPantau() {
           tgl_faw: erp?.tgl_faw || null,
           jenis_bahan: erp?.jenis_bahan || null,
           modal_sales: erp?.modal_sales ?? null,
-          status_deal_erp: erp?.status_deal || null,
           hppSales: g.hppSales,
           cogsProyeksi: g.cogsProyeksi,
           isVendor: g.isVendor,
@@ -186,7 +185,6 @@ export default function DashboardPantau() {
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal Order</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal FAW</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Modal Sales</th>
-                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Status Deal (ERP)</th>
                     <th style={{ ...s.th, background:COL_HPP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Total HPP Sales</th>
                     <th style={{ ...s.th, background:COL_COGS, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Total COGS Proyeksi</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Status</th>
@@ -207,7 +205,6 @@ export default function DashboardPantau() {
                         <td style={{ ...s.td, color: r.tgl_order ? C.dark : '#d1d5db' }}>{r.tgl_order ? new Date(r.tgl_order).toLocaleDateString('id-ID') : '—'}</td>
                         <td style={{ ...s.td, color: r.tgl_faw ? C.dark : '#d1d5db' }}>{r.tgl_faw ? new Date(r.tgl_faw).toLocaleDateString('id-ID') : '—'}</td>
                         <td style={{ ...s.td, textAlign:'right', color: r.modal_sales != null ? C.dark : '#d1d5db' }}>{r.modal_sales != null ? idr(r.modal_sales) : '—'}</td>
-                        <td style={{ ...s.td, color: r.status_deal_erp ? C.dark : '#d1d5db' }}>{r.status_deal_erp || '—'}</td>
                         <td style={{ ...s.td, textAlign:'right', fontWeight:500, color: noHpp ? '#dc2626' : C.dark }}>
                           {noHpp ? 'Belum diisi' : idr(r.hppSales)}
                         </td>
