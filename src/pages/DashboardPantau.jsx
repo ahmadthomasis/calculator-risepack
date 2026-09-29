@@ -11,11 +11,15 @@ const COL_ERP = '#FEF9C3'      // kuning - dari ERP
 const COL_HPP = '#DBEAFE'      // biru - HPP Sales (estimator)
 const COL_COGS = '#FDEBD3'     // krem - COGS Proyeksi (purchasing)
 
-const STATUS_OPTIONS = [
+// Status Pengisian: gap yang perlu dikejar. Kosong (tidak ada yang dicentang) = tampilkan semua.
+const PENGISIAN_OPTIONS = [
   { key:'no_estimator', label:'Belum diisi Estimator' },
   { key:'no_purchasing', label:'Belum divalidasi Purchasing' },
+]
+// Status Pengerjaan: sumber harga deal-nya. Kosong = tampilkan semua.
+const PENGERJAAN_OPTIONS = [
   { key:'vendor', label:'Vendor' },
-  { key:'complete', label:'Lengkap' },
+  { key:'workshop', label:'Workshop' },
 ]
 
 const s = {
@@ -45,15 +49,16 @@ export default function DashboardPantau() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState(() => new Set(STATUS_OPTIONS.map(o => o.key)))
+  const [pengisianFilter, setPengisianFilter] = useState(() => new Set())
+  const [pengerjaanFilter, setPengerjaanFilter] = useState(() => new Set())
   const [picFilter, setPicFilter] = useState('all')
   const [tglOrderFrom, setTglOrderFrom] = useState('')
   const [tglOrderTo, setTglOrderTo] = useState('')
   const [tglFawFrom, setTglFawFrom] = useState('')
   const [tglFawTo, setTglFawTo] = useState('')
 
-  function toggleStatus(key) {
-    setStatusFilter(prev => {
+  function toggleInSet(setter, key) {
+    setter(prev => {
       const next = new Set(prev)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -131,6 +136,9 @@ export default function DashboardPantau() {
         const noHpp = !g
         const notValidated = !!g && !isVendor && cogsProyeksi === hppSales
         const status = noHpp ? 'no_estimator' : isVendor ? 'vendor' : notValidated ? 'no_purchasing' : 'complete'
+        // Pengerjaan: Vendor kalau sumber harga deal-nya vendor, selain itu
+        // Workshop (termasuk yang belum diisi Estimator - defaultnya internal).
+        const pengerjaan = isVendor ? 'vendor' : 'workshop'
         return {
           kode_order: key,
           pic: erp?.sales_name || null,
@@ -147,6 +155,9 @@ export default function DashboardPantau() {
           erpFound: !!erp,
           quotationFound: !!g,
           status,
+          isNoEstimator: noHpp,
+          isNoPurchasing: notValidated,
+          pengerjaan,
         }
       })
 
@@ -179,7 +190,11 @@ export default function DashboardPantau() {
         const q = search.trim().toLowerCase()
         if (!(r.kode_order || '').toLowerCase().includes(q) && !(r.nama_spk || '').toLowerCase().includes(q) && !(r.nama_produk || '').toLowerCase().includes(q)) return false
       }
-      if (!statusFilter.has(r.status)) return false
+      if (pengisianFilter.size > 0) {
+        const match = (pengisianFilter.has('no_estimator') && r.isNoEstimator) || (pengisianFilter.has('no_purchasing') && r.isNoPurchasing)
+        if (!match) return false
+      }
+      if (pengerjaanFilter.size > 0 && !pengerjaanFilter.has(r.pengerjaan)) return false
       if (picFilter !== 'all' && r.pic !== picFilter) return false
       if (tglOrderFrom && (!r.tgl_order || r.tgl_order < tglOrderFrom)) return false
       if (tglOrderTo && (!r.tgl_order || r.tgl_order > tglOrderTo)) return false
@@ -187,7 +202,7 @@ export default function DashboardPantau() {
       if (tglFawTo && (!r.tgl_faw || r.tgl_faw > tglFawTo)) return false
       return true
     })
-  }, [rows, search, statusFilter, picFilter, tglOrderFrom, tglOrderTo, tglFawFrom, tglFawTo])
+  }, [rows, search, pengisianFilter, pengerjaanFilter, picFilter, tglOrderFrom, tglOrderTo, tglFawFrom, tglFawTo])
 
   return (
     <Layout title="Dashboard Pantau">
@@ -213,11 +228,22 @@ export default function DashboardPantau() {
 
         <div style={{ display:'flex', flexWrap:'wrap', gap:16, alignItems:'flex-end', marginBottom:16, padding:'12px 14px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:10 }}>
           <div>
-            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Status</div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Status Pengisian</div>
             <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-              {STATUS_OPTIONS.map(opt => (
+              {PENGISIAN_OPTIONS.map(opt => (
                 <label key={opt.key} style={{ display:'flex', alignItems:'center', gap:5, fontSize:12.5, color:C.brown, cursor:'pointer', whiteSpace:'nowrap' }}>
-                  <input type="checkbox" checked={statusFilter.has(opt.key)} onChange={() => toggleStatus(opt.key)} />
+                  <input type="checkbox" checked={pengisianFilter.has(opt.key)} onChange={() => toggleInSet(setPengisianFilter, opt.key)} />
+                  {opt.label}
+                </label>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:4 }}>Status Pengerjaan</div>
+            <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+              {PENGERJAAN_OPTIONS.map(opt => (
+                <label key={opt.key} style={{ display:'flex', alignItems:'center', gap:5, fontSize:12.5, color:C.brown, cursor:'pointer', whiteSpace:'nowrap' }}>
+                  <input type="checkbox" checked={pengerjaanFilter.has(opt.key)} onChange={() => toggleInSet(setPengerjaanFilter, opt.key)} />
                   {opt.label}
                 </label>
               ))}
@@ -251,9 +277,9 @@ export default function DashboardPantau() {
                 style={{ padding:'6px 8px', border:`1px solid ${C.border}`, borderRadius:8, fontSize:12.5, outline:'none' }} />
             </div>
           </div>
-          {(picFilter !== 'all' || tglOrderFrom || tglOrderTo || tglFawFrom || tglFawTo || statusFilter.size !== STATUS_OPTIONS.length) && (
+          {(picFilter !== 'all' || tglOrderFrom || tglOrderTo || tglFawFrom || tglFawTo || pengisianFilter.size > 0 || pengerjaanFilter.size > 0) && (
             <button
-              onClick={() => { setPicFilter('all'); setTglOrderFrom(''); setTglOrderTo(''); setTglFawFrom(''); setTglFawTo(''); setStatusFilter(new Set(STATUS_OPTIONS.map(o => o.key))) }}
+              onClick={() => { setPicFilter('all'); setTglOrderFrom(''); setTglOrderTo(''); setTglFawFrom(''); setTglFawTo(''); setPengisianFilter(new Set()); setPengerjaanFilter(new Set()) }}
               style={{ padding:'6px 12px', borderRadius:8, border:`1px solid ${C.border}`, background:'#fff', color:C.brown, fontSize:12, cursor:'pointer' }}>
               ✕ Reset Filter
             </button>
