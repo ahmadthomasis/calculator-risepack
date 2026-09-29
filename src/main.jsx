@@ -17,6 +17,7 @@ import ProdevList from './pages/prodev/ProdevList'
 import ProdevForm from './pages/prodev/ProdevForm'
 import ProdevQueue from './pages/prodev/ProdevQueue'
 import TemplateLibrary from './pages/prodev/TemplateLibrary'
+import DashboardPantau from './pages/DashboardPantau'
 
 function RoleRouter() {
   const { user, profile, loading } = useAuth()
@@ -53,6 +54,7 @@ function RoleRouter() {
           )}
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/directory" element={<DirectoryHarga />} />
+          <Route path="/dashboard-pantau" element={<DashboardPantau />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -70,6 +72,7 @@ function RoleRouter() {
           <Route path="/" element={<ProdevQueue />} />
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/directory" element={<DirectoryHarga />} />
+          <Route path="/dashboard-pantau" element={<DashboardPantau />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -80,6 +83,7 @@ function RoleRouter() {
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />
           <Route path="/directory" element={<DirectoryHarga />} />
+          <Route path="/dashboard-pantau" element={<DashboardPantau />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>
       )}
@@ -91,6 +95,7 @@ function RoleRouter() {
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />
           <Route path="/directory" element={<DirectoryHarga />} />
+          <Route path="/dashboard-pantau" element={<DashboardPantau />} />
           <Route path="*" element={<Navigate to="/purchasing" replace />} />
         </>
       )}
@@ -109,6 +114,7 @@ function RoleRouter() {
           <Route path="/potong-kertas" element={<PotongKertas />} />
           <Route path="/pricing-dataset" element={<PricingDataset />} />
           <Route path="/directory" element={<DirectoryHarga />} />
+          <Route path="/dashboard-pantau" element={<DashboardPantau />} />
           <Route path="/user-management" element={<UserManagement />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </>

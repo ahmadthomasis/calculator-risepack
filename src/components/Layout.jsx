@@ -11,6 +11,7 @@ const C = {
 }
 
 const managerTabs = [
+  { path: '/dashboard-pantau', label: 'Dashboard Pantau' },
   { path: '/',             label: 'Manager' },
   { path: '/sales',        label: 'Sales' },
   { path: '/estimator',    label: 'Estimator' },
@@ -72,6 +73,15 @@ const TemplateIcon = ({ active }) => (
     <path d="M12 2 2 7l10 5 10-5-10-5Z" />
     <path d="m2 12 10 5 10-5" />
     <path d="m2 17 10 5 10-5" />
+  </svg>
+)
+
+const GaugeIcon = ({ active }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12 20a8 8 0 1 0-8-8" />
+    <path d="M12 20a8 8 0 0 0 8-8" />
+    <path d="M12 12 16 8" />
+    <circle cx="12" cy="12" r="1" fill={active ? '#fff' : 'rgba(255,255,255,0.55)'} stroke="none" />
   </svg>
 )
 
@@ -145,6 +155,10 @@ export default function Layout({ children, title, beforeNavigate }) {
           // Template Library: prodev, innersales, & manager
           ...((profile?.role === 'prodev' || profile?.role === 'manager' || (profile?.role === 'sales' && profile?.is_innersales))
             ? [{ path:'/prodev/templates', label:'Template', Icon: TemplateIcon }] : []),
+          // Dashboard Pantau: semua role kecuali prodev. Manager sudah punya
+          // aksesnya lewat tab atas, jadi tidak perlu dobel di sidebar.
+          ...(profile?.role !== 'prodev' && profile?.role !== 'manager'
+            ? [{ path:'/dashboard-pantau', label:'Dashboard Pantau', Icon: GaugeIcon }] : []),
           ...sidebarItems,
         ].map(item => {
           const active = item.path === '/prodev'
