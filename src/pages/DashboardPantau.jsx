@@ -13,6 +13,10 @@ const COL_ERP = '#FEF9C3'      // kuning - dari ERP
 const COL_HPP = '#DBEAFE'      // biru - HPP Sales (estimator)
 const COL_COGS = '#FDEBD3'     // krem - COGS Proyeksi (purchasing)
 
+// Order dengan Tanggal FAW sebelum tanggal ini tidak perlu dipantau lagi -
+// dibuang dari query supaya data yang ditarik & ditabelkan lebih ringan.
+const FAW_CUTOFF = '2026-09-20'
+
 // Status Pengisian: gap yang perlu dikejar. Kosong (tidak ada yang dicentang) = tampilkan semua.
 const PENGISIAN_OPTIONS = [
   { key:'no_estimator', label:'Belum diisi Estimator' },
@@ -73,31 +77,41 @@ export default function DashboardPantau() {
   async function fetchAll() {
     setLoading(true)
     try {
-      // Basis data = SEMUA order "Deal" di ERP (bukan cuma yang sudah diisi
-      // di Calculator Risepack) - biar yang belum diisi kelihatan sebagai gap,
-      // bukan malah hilang dari daftar.
+      // Basis data = SEMUA order "Deal" di ERP dengan Tanggal FAW >= FAW_CUTOFF
+      // (bukan cuma yang sudah diisi di Calculator Risepack) - biar yang belum
+      // diisi kelihatan sebagai gap, bukan malah hilang dari daftar. Order FAW
+      // lama dibuang di level query biar data yang ditarik lebih ringan.
       let erpRows = []
       for (let from = 0; ; from += 1000) {
         const { data, error: eErr } = await supabase
           .from('erp_orders').select('*')
           .eq('status_deal', 'Deal')
+          .gte('tgl_faw', FAW_CUTOFF)
           .range(from, from + 999)
         if (eErr) throw eErr
         erpRows = erpRows.concat(data || [])
         if (!data || data.length < 1000) break
       }
       const erpBySko = Object.fromEntries(erpRows.map(r => [r.sko, r]))
+      const skoList = Object.keys(erpBySko)
 
-      const { data: quotations, error: qErr } = await supabase
-        .from('quotations')
-        .select('id,request_id,kode_order,quantity,customer_name,product_type,total_cost,cost_source,vendor_price_per_pcs,deal_price_source,material_cost,cetak_cost,emboss_laminasi,material_proses,finishing_wo,additional_cost')
-        .eq('deal_status', 'deal')
-        .not('kode_order', 'is', null)
-        .eq('is_active', true)
-        .eq('is_draft', false)
-      if (qErr) throw qErr
+      // Cuma tarik quotations buat Kode Order yang lolos filter FAW di atas.
+      let quotations = []
+      for (let i = 0; i < skoList.length; i += 50) {
+        const chunk = skoList.slice(i, i + 50)
+        if (chunk.length === 0) continue
+        const { data, error: qErr } = await supabase
+          .from('quotations')
+          .select('id,request_id,kode_order,quantity,customer_name,product_type,total_cost,cost_source,vendor_price_per_pcs,deal_price_source,material_cost,cetak_cost,emboss_laminasi,material_proses,finishing_wo,additional_cost')
+          .in('kode_order', chunk)
+          .eq('deal_status', 'deal')
+          .eq('is_active', true)
+          .eq('is_draft', false)
+        if (qErr) throw qErr
+        quotations = quotations.concat(data || [])
+      }
 
-      const ids = (quotations || []).map(q => q.id)
+      const ids = quotations.map(q => q.id)
       let comparisons = []
       for (let i = 0; i < ids.length; i += 50) {
         const chunk = ids.slice(i, i + 50)
@@ -112,7 +126,7 @@ export default function DashboardPantau() {
       // Gabung per Kode Order (bisa lebih dari 1 quotation per kode order kalau
       // sales tambah produk lain di request yang sama).
       const grouped = {}
-      ;(quotations || []).forEach(q => {
+      quotations.forEach(q => {
         const key = q.kode_order
         if (!grouped[key]) grouped[key] = { kode_order: key, quotations: [], hppSales: 0, cogsProyeksi: 0 }
         const isVendor = q.deal_price_source === 'vendor'
@@ -125,11 +139,7 @@ export default function DashboardPantau() {
         grouped[key].isVendor = grouped[key].isVendor || isVendor
       })
 
-      // Union: semua Kode Order dari ERP (Deal) + semua Kode Order yang sudah
-      // diisi di Calculator Risepack (jaga-jaga kalau belum sempat ke-sync ERP).
-      const allKeys = new Set([...Object.keys(erpBySko), ...Object.keys(grouped)])
-
-      const result = [...allKeys].map(key => {
+      const result = skoList.map(key => {
         const erp = erpBySko[key] || null
         const g = grouped[key] || null
         const isVendor = g?.isVendor || false
@@ -163,18 +173,15 @@ export default function DashboardPantau() {
         }
       })
 
-      // Filter: cuma yang sudah FAW (tgl_faw sudah terisi di ERP).
-      const withFaw = result.filter(r => !!r.tgl_faw)
-
       // Sort by tanggal Order (terbaru dulu). Yang tidak punya tgl_order
       // ditaruh paling akhir.
-      withFaw.sort((a, b) => {
+      result.sort((a, b) => {
         if (!a.tgl_order && !b.tgl_order) return 0
         if (!a.tgl_order) return 1
         if (!b.tgl_order) return -1
         return a.tgl_order < b.tgl_order ? 1 : a.tgl_order > b.tgl_order ? -1 : 0
       })
-      setRows(withFaw)
+      setRows(result)
       setError(null)
     } catch (e) {
       setError(e.message)
