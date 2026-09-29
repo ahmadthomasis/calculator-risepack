@@ -122,11 +122,18 @@ export default function DashboardPantau() {
         }
       })
 
-      result.sort((a, b) => {
-        if (a.erpFound !== b.erpFound) return a.erpFound ? -1 : 1
-        return (a.tgl_order || '') < (b.tgl_order || '') ? 1 : -1
+      // Filter: cuma yang sudah FAW (tgl_faw sudah terisi di ERP).
+      const withFaw = result.filter(r => !!r.tgl_faw)
+
+      // Sort by tanggal Order (terbaru dulu). Yang tidak punya tgl_order
+      // ditaruh paling akhir.
+      withFaw.sort((a, b) => {
+        if (!a.tgl_order && !b.tgl_order) return 0
+        if (!a.tgl_order) return 1
+        if (!b.tgl_order) return -1
+        return a.tgl_order < b.tgl_order ? 1 : a.tgl_order > b.tgl_order ? -1 : 0
       })
-      setRows(result)
+      setRows(withFaw)
       setError(null)
     } catch (e) {
       setError(e.message)
