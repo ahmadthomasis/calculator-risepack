@@ -185,7 +185,7 @@ export default function DashboardPantau() {
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal Order</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal FAW</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Modal Sales</th>
-                    <th style={{ ...s.th, background:COL_HPP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Total HPP Sales</th>
+                    <th style={{ ...s.th, background:COL_HPP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Total HPP Sales/Estimator</th>
                     <th style={{ ...s.th, background:COL_COGS, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Total COGS Proyeksi</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Status</th>
                   </tr>
