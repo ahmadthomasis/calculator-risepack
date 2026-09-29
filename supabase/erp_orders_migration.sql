@@ -37,4 +37,9 @@ drop policy if exists "erp_orders_update" on public.erp_orders;
 create policy "erp_orders_update" on public.erp_orders
   for update to authenticated using (true);
 
+-- Perlu buat sync script hapus data lama sebelum insert ulang (full refresh).
+drop policy if exists "erp_orders_delete" on public.erp_orders;
+create policy "erp_orders_delete" on public.erp_orders
+  for delete to authenticated using (true);
+
 -- ═══════════════════════════════════════════════════════════════════════════
