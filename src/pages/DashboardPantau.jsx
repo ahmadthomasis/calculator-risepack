@@ -126,35 +126,44 @@ export default function DashboardPantau() {
       comparisons.forEach(c => { compMap[`${c.quotation_id}|${c.section}|${c.row_index}`] = c })
 
       // Gabung per Kode Order (bisa lebih dari 1 quotation per kode order kalau
-      // sales tambah produk lain di request yang sama).
+      // sales tambah produk lain di request yang sama). Dipakai buat deal
+      // Workshop saja -- deal Vendor gak butuh rincian ini (lihat di bawah).
       const grouped = {}
       quotations.forEach(q => {
         const key = q.kode_order
         if (!grouped[key]) grouped[key] = { kode_order: key, quotations: [], hppSales: 0, cogsProyeksi: 0 }
-        const isVendor = q.deal_price_source === 'vendor'
-        const vendorTotal = (Number(q.vendor_price_per_pcs) || 0) * (Number(q.quantity) || 0)
-        const hpp = isVendor ? vendorTotal : (Number(q.total_cost) || 0)
-        const cogs = isVendor ? vendorTotal : purchasingTotalWithFallback(q, compMap)
         grouped[key].quotations.push(q)
-        grouped[key].hppSales += hpp
-        grouped[key].cogsProyeksi += cogs
-        grouped[key].isVendor = grouped[key].isVendor || isVendor
+        grouped[key].hppSales += Number(q.total_cost) || 0
+        grouped[key].cogsProyeksi += purchasingTotalWithFallback(q, compMap)
       })
 
       const result = skoList.map(key => {
         const erp = erpBySko[key] || null
         const g = grouped[key] || null
-        const isVendor = g?.isVendor || false
-        const hppSales = g?.hppSales || 0
-        const cogsProyeksi = g?.cogsProyeksi || 0
-        const noHpp = !g
-        const notValidated = !!g && !isVendor && cogsProyeksi === hppSales
-        const status = noHpp ? 'no_estimator' : isVendor ? 'vendor' : notValidated ? 'no_purchasing' : 'complete'
         // Pengerjaan: langsung dari data ERP (nama_vendor), bukan dari
         // deal_price_source kita - biar kelihatan buat SEMUA order (termasuk
         // yang belum diisi Estimator), bukan cuma yang sudah diproses di app.
         // nama_vendor = 'Risepack/WO' -> Workshop, selain itu -> Vendor.
         const pengerjaan = erp?.nama_vendor === 'Risepack/WO' ? 'workshop' : 'vendor'
+        const isVendor = pengerjaan === 'vendor'
+
+        // Deal Vendor: HPP Sales & COGS Proyeksi ikut Modal Sales dari ERP
+        // apa adanya (copy langsung), apapun isi quotation-nya kalau ada --
+        // ini aturan bisnis, bukan dihitung dari rincian harga. Deal
+        // Workshop tetap pakai mekanisme lama (rincian per material/proses).
+        let hppSales, cogsProyeksi, noHpp, notValidated
+        if (isVendor) {
+          hppSales = erp?.modal_sales ?? 0
+          cogsProyeksi = erp?.modal_sales ?? 0
+          noHpp = erp?.modal_sales == null
+          notValidated = false
+        } else {
+          hppSales = g?.hppSales || 0
+          cogsProyeksi = g?.cogsProyeksi || 0
+          noHpp = !g
+          notValidated = !!g && cogsProyeksi === hppSales
+        }
+        const status = noHpp ? 'no_estimator' : isVendor ? 'vendor' : notValidated ? 'no_purchasing' : 'complete'
         return {
           kode_order: key,
           pic: erp?.sales_name || null,
