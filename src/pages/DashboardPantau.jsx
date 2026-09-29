@@ -28,6 +28,7 @@ const PENGISIAN_OPTIONS = [
 const PENGERJAAN_OPTIONS = [
   { key:'vendor', label:'Vendor' },
   { key:'workshop', label:'Workshop' },
+  { key:'unknown', label:'Belum Ada Data Vendor' },
 ]
 
 const s = {
@@ -143,14 +144,19 @@ export default function DashboardPantau() {
         // Pengerjaan: langsung dari data ERP (nama_vendor), bukan dari
         // deal_price_source kita - biar kelihatan buat SEMUA order (termasuk
         // yang belum diisi Estimator), bukan cuma yang sudah diproses di app.
-        // nama_vendor = 'Risepack/WO' -> Workshop, selain itu -> Vendor.
-        const pengerjaan = erp?.nama_vendor === 'Risepack/WO' ? 'workshop' : 'vendor'
+        // nama_vendor = 'Risepack/WO' -> Workshop, ada isinya (bukan itu) ->
+        // Vendor, kosong/null -> 'unknown' (ERP belum sempat catat vendor-nya
+        // sama sekali -- jangan asal anggap Vendor, nanti malah nutupin data
+        // yang sebenarnya sudah diisi Estimator/Purchasing).
+        const pengerjaan = erp?.nama_vendor === 'Risepack/WO' ? 'workshop' : erp?.nama_vendor ? 'vendor' : 'unknown'
         const isVendor = pengerjaan === 'vendor'
 
         // Deal Vendor: HPP Sales & COGS Proyeksi ikut Modal Sales dari ERP
         // apa adanya (copy langsung), apapun isi quotation-nya kalau ada --
         // ini aturan bisnis, bukan dihitung dari rincian harga. Deal
-        // Workshop tetap pakai mekanisme lama (rincian per material/proses).
+        // Workshop & 'unknown' (vendor belum kecatat) sama-sama tetap pakai
+        // mekanisme lama (rincian per material/proses), biar data yang
+        // sudah diisi Estimator/Purchasing tetap kelihatan.
         let hppSales, cogsProyeksi, noHpp, notValidated
         if (isVendor) {
           hppSales = erp?.modal_sales ?? 0
@@ -163,7 +169,12 @@ export default function DashboardPantau() {
           noHpp = !g
           notValidated = !!g && cogsProyeksi === hppSales
         }
-        const status = noHpp ? 'no_estimator' : isVendor ? 'vendor' : notValidated ? 'no_purchasing' : 'complete'
+        // Kalau vendor-nya belum kecatat DAN belum ada quotation sama
+        // sekali, tampilkan sebagai "isi nama vendor dulu" - begitu diisi
+        // di ERP, bisa jadi langsung selesai lewat Modal Sales tanpa perlu
+        // Estimator turun tangan.
+        const status = pengerjaan === 'unknown' && noHpp ? 'no_vendor_info'
+          : noHpp ? 'no_estimator' : isVendor ? 'vendor' : notValidated ? 'no_purchasing' : 'complete'
         return {
           kode_order: key,
           pic: erp?.sales_name || null,
@@ -337,7 +348,7 @@ export default function DashboardPantau() {
                 </thead>
                 <tbody>
                   {filtered.map(r => {
-                    const noHpp = r.status === 'no_estimator'
+                    const noHpp = r.status === 'no_estimator' || r.status === 'no_vendor_info'
                     return (
                       <tr key={r.kode_order}>
                         <td style={{ ...s.td, color: r.pic ? C.dark : '#d1d5db' }}>{r.pic || '—'}</td>
@@ -358,6 +369,8 @@ export default function DashboardPantau() {
                         <td style={s.td}>
                           {!r.erpFound ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fef2f2', color:'#dc2626' }}>Data ERP belum ada</span>
+                          ) : r.status === 'no_vendor_info' ? (
+                            <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fffbeb', color:'#92400e' }} title="ERP belum catat vendor/workshop buat order ini">⚠️ Isi Nama Vendor</span>
                           ) : r.status === 'no_estimator' ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fef2f2', color:'#dc2626' }}>⚠️ Belum diisi Estimator</span>
                           ) : r.status === 'vendor' ? (
