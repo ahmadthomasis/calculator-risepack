@@ -45,6 +45,21 @@ export default function DashboardPantau() {
   async function fetchAll() {
     setLoading(true)
     try {
+      // Basis data = SEMUA order "Deal" di ERP (bukan cuma yang sudah diisi
+      // di Calculator Risepack) - biar yang belum diisi kelihatan sebagai gap,
+      // bukan malah hilang dari daftar.
+      let erpRows = []
+      for (let from = 0; ; from += 1000) {
+        const { data, error: eErr } = await supabase
+          .from('erp_orders').select('*')
+          .eq('status_deal', 'Deal')
+          .range(from, from + 999)
+        if (eErr) throw eErr
+        erpRows = erpRows.concat(data || [])
+        if (!data || data.length < 1000) break
+      }
+      const erpBySko = Object.fromEntries(erpRows.map(r => [r.sko, r]))
+
       const { data: quotations, error: qErr } = await supabase
         .from('quotations')
         .select('id,request_id,kode_order,quantity,customer_name,product_type,total_cost,cost_source,vendor_price_per_pcs,deal_price_source,material_cost,cetak_cost,emboss_laminasi,material_proses,finishing_wo,additional_cost')
@@ -53,19 +68,6 @@ export default function DashboardPantau() {
         .eq('is_active', true)
         .eq('is_draft', false)
       if (qErr) throw qErr
-
-      const kodeOrders = [...new Set((quotations || []).map(q => q.kode_order).filter(Boolean))]
-
-      let erpRows = []
-      if (kodeOrders.length > 0) {
-        for (let i = 0; i < kodeOrders.length; i += 100) {
-          const chunk = kodeOrders.slice(i, i + 100)
-          const { data, error: eErr } = await supabase.from('erp_orders').select('*').in('sko', chunk)
-          if (eErr) throw eErr
-          erpRows = erpRows.concat(data || [])
-        }
-      }
-      const erpBySko = Object.fromEntries(erpRows.map(r => [r.sko, r]))
 
       const ids = (quotations || []).map(q => q.id)
       let comparisons = []
@@ -95,26 +97,35 @@ export default function DashboardPantau() {
         grouped[key].isVendor = grouped[key].isVendor || isVendor
       })
 
-      const result = Object.values(grouped).map(g => {
-        const erp = erpBySko[g.kode_order] || null
+      // Union: semua Kode Order dari ERP (Deal) + semua Kode Order yang sudah
+      // diisi di Calculator Risepack (jaga-jaga kalau belum sempat ke-sync ERP).
+      const allKeys = new Set([...Object.keys(erpBySko), ...Object.keys(grouped)])
+
+      const result = [...allKeys].map(key => {
+        const erp = erpBySko[key] || null
+        const g = grouped[key] || null
         return {
-          kode_order: g.kode_order,
+          kode_order: key,
           pic: erp?.sales_name || null,
-          nama_spk: erp?.nama_customer || g.quotations[0]?.customer_name || null,
-          nama_produk: erp?.nama_produk || g.quotations.map(q => q.product_type).join(', '),
-          jumlah_produk: erp?.jumlah_produk ?? g.quotations.reduce((s, q) => s + (Number(q.quantity) || 0), 0),
+          nama_spk: erp?.nama_customer || g?.quotations[0]?.customer_name || null,
+          nama_produk: erp?.nama_produk || g?.quotations.map(q => q.product_type).join(', ') || null,
+          jumlah_produk: erp?.jumlah_produk ?? (g ? g.quotations.reduce((s, q) => s + (Number(q.quantity) || 0), 0) : null),
           tgl_order: erp?.tgl_order || null,
           tgl_faw: erp?.tgl_faw || null,
           jenis_bahan: erp?.jenis_bahan || null,
           modal_sales: erp?.modal_sales ?? null,
-          hppSales: g.hppSales,
-          cogsProyeksi: g.cogsProyeksi,
-          isVendor: g.isVendor,
+          hppSales: g?.hppSales || 0,
+          cogsProyeksi: g?.cogsProyeksi || 0,
+          isVendor: g?.isVendor || false,
           erpFound: !!erp,
+          quotationFound: !!g,
         }
       })
 
-      result.sort((a, b) => (b.hppSales || 0) - (a.hppSales || 0))
+      result.sort((a, b) => {
+        if (a.erpFound !== b.erpFound) return a.erpFound ? -1 : 1
+        return (a.tgl_order || '') < (b.tgl_order || '') ? 1 : -1
+      })
       setRows(result)
       setError(null)
     } catch (e) {
@@ -130,9 +141,9 @@ export default function DashboardPantau() {
         if (!(r.kode_order || '').toLowerCase().includes(q) && !(r.nama_spk || '').toLowerCase().includes(q) && !(r.nama_produk || '').toLowerCase().includes(q)) return false
       }
       if (onlyGap) {
-        const noHpp = !r.hppSales
-        const notValidated = !r.isVendor && r.cogsProyeksi === r.hppSales
-        if (!noHpp && !notValidated && r.erpFound) return false
+        const noHpp = !r.quotationFound
+        const notValidated = r.quotationFound && !r.isVendor && r.cogsProyeksi === r.hppSales
+        if (!noHpp && !notValidated) return false
       }
       return true
     })
@@ -192,8 +203,8 @@ export default function DashboardPantau() {
                 </thead>
                 <tbody>
                   {filtered.map(r => {
-                    const noHpp = !r.hppSales
-                    const notValidated = !r.isVendor && r.cogsProyeksi === r.hppSales && r.hppSales > 0
+                    const noHpp = !r.quotationFound
+                    const notValidated = r.quotationFound && !r.isVendor && r.cogsProyeksi === r.hppSales
                     return (
                       <tr key={r.kode_order}>
                         <td style={{ ...s.td, color: r.pic ? C.dark : '#d1d5db' }}>{r.pic || '—'}</td>
@@ -208,8 +219,8 @@ export default function DashboardPantau() {
                         <td style={{ ...s.td, textAlign:'right', fontWeight:500, color: noHpp ? '#dc2626' : C.dark }}>
                           {noHpp ? 'Belum diisi' : idr(r.hppSales)}
                         </td>
-                        <td style={{ ...s.td, textAlign:'right', fontWeight:500, color: r.isVendor ? '#9ca3af' : C.dark }}>
-                          {r.isVendor ? <span title="Deal pakai harga vendor, COGS Proyeksi = HPP Sales">{idr(r.cogsProyeksi)}</span> : idr(r.cogsProyeksi)}
+                        <td style={{ ...s.td, textAlign:'right', fontWeight:500, color: noHpp ? '#dc2626' : r.isVendor ? '#9ca3af' : C.dark }}>
+                          {noHpp ? 'Belum diisi' : r.isVendor ? <span title="Deal pakai harga vendor, COGS Proyeksi = HPP Sales">{idr(r.cogsProyeksi)}</span> : idr(r.cogsProyeksi)}
                         </td>
                         <td style={s.td}>
                           {!r.erpFound ? (
