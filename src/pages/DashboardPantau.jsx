@@ -36,6 +36,45 @@ const s = {
   td: { padding:'8px 10px', fontSize:13, color:C.dark, borderBottom:`1px solid ${C.cream}`, whiteSpace:'nowrap' },
 }
 
+// Gabungkan baris Workshop yang cuma beda "pengiriman ke berapa" (akhiran
+// -2/-3 dst di Kode Order, misal .../I/0709/P dan .../I/0709/P-2 itu 1 line
+// produk yang sama, dikirim bertahap) jadi 1 baris per line produk asli --
+// Jumlah Produk, Modal Sales, HPP Sales, COGS Proyeksi dijumlahkan dari
+// semua pengiriman. Cuma buat Workshop; Vendor tetap apa adanya per baris.
+function mergeWorkshopShipments(result) {
+  const baseKey = k => k.replace(/-\d+$/, '')
+  const groups = {}
+  result.forEach(r => {
+    const key = r.pengerjaan === 'workshop' ? baseKey(r.kode_order) : r.kode_order
+    ;(groups[key] = groups[key] || []).push(r)
+  })
+  return Object.entries(groups).map(([key, members]) => {
+    if (members.length === 1) return members[0]
+    // Baris representatif: yang Kode Order-nya persis tanpa akhiran -N (pengiriman pertama).
+    const primary = members.find(m => m.kode_order === key) || members[0]
+    const anyFilled = members.some(m => m.quotationFound)
+    const jumlah_produk = members.reduce((s, m) => s + (Number(m.jumlah_produk) || 0), 0)
+    const modal_sales = members.reduce((s, m) => s + (Number(m.modal_sales) || 0), 0)
+    const hppSales = members.reduce((s, m) => s + (Number(m.hppSales) || 0), 0)
+    const cogsProyeksi = members.reduce((s, m) => s + (Number(m.cogsProyeksi) || 0), 0)
+    const noHpp = !anyFilled
+    const notValidated = anyFilled && cogsProyeksi === hppSales
+    const status = noHpp ? 'no_estimator' : notValidated ? 'no_purchasing' : 'complete'
+    return {
+      ...primary,
+      kode_order: key,
+      jumlah_produk,
+      modal_sales,
+      hppSales,
+      cogsProyeksi,
+      quotationFound: anyFilled,
+      status,
+      isNoEstimator: noHpp,
+      isNoPurchasing: notValidated,
+    }
+  })
+}
+
 // Total harga purchasing dengan fallback ke subtotal estimator (item yang
 // belum divalidasi purchasing) - sama persis dengan logika di PurchasingReview.jsx
 function purchasingTotalWithFallback(quotation, compMap) {
@@ -198,15 +237,17 @@ export default function DashboardPantau() {
         }
       })
 
+      const merged = mergeWorkshopShipments(result)
+
       // Sort by tanggal Order (terbaru dulu). Yang tidak punya tgl_order
       // ditaruh paling akhir.
-      result.sort((a, b) => {
+      merged.sort((a, b) => {
         if (!a.tgl_order && !b.tgl_order) return 0
         if (!a.tgl_order) return 1
         if (!b.tgl_order) return -1
         return a.tgl_order < b.tgl_order ? 1 : a.tgl_order > b.tgl_order ? -1 : 0
       })
-      setRows(result)
+      setRows(merged)
       setError(null)
     } catch (e) {
       setError(e.message)
