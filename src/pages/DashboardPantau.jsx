@@ -6,6 +6,8 @@ const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', 
 
 const fmt = n => (n || 0).toLocaleString('id-ID')
 const idr = n => 'Rp ' + fmt(Math.round(n || 0))
+// Format tanggal "1 Jun 2026" (bukan "1/6/2026")
+const fmtDate = d => d ? new Date(d).toLocaleDateString('id-ID', { day:'numeric', month:'short', year:'numeric' }) : null
 
 const COL_ERP = '#FEF9C3'      // kuning - dari ERP
 const COL_HPP = '#DBEAFE'      // biru - HPP Sales (estimator)
@@ -323,8 +325,8 @@ export default function DashboardPantau() {
                         <td style={s.td}>{r.nama_produk || '—'}</td>
                         <td style={{ ...s.td, textAlign:'right' }}>{fmt(r.jumlah_produk)}</td>
                         <td style={{ ...s.td, color: r.jenis_bahan ? C.dark : '#d1d5db' }}>{r.jenis_bahan || '—'}</td>
-                        <td style={{ ...s.td, color: r.tgl_order ? C.dark : '#d1d5db' }}>{r.tgl_order ? new Date(r.tgl_order).toLocaleDateString('id-ID') : '—'}</td>
-                        <td style={{ ...s.td, color: r.tgl_faw ? C.dark : '#d1d5db' }}>{r.tgl_faw ? new Date(r.tgl_faw).toLocaleDateString('id-ID') : '—'}</td>
+                        <td style={{ ...s.td, color: r.tgl_order ? C.dark : '#d1d5db' }}>{fmtDate(r.tgl_order) || '—'}</td>
+                        <td style={{ ...s.td, color: r.tgl_faw ? C.dark : '#d1d5db' }}>{fmtDate(r.tgl_faw) || '—'}</td>
                         <td style={{ ...s.td, textAlign:'right', color: r.modal_sales != null ? C.dark : '#d1d5db' }}>{r.modal_sales != null ? idr(r.modal_sales) : '—'}</td>
                         <td style={{ ...s.td, textAlign:'right', fontWeight:500, color: noHpp ? '#dc2626' : C.dark }}>
                           {noHpp ? 'Belum diisi' : idr(r.hppSales)}
