@@ -150,9 +150,11 @@ export default function DashboardPantau() {
         const noHpp = !g
         const notValidated = !!g && !isVendor && cogsProyeksi === hppSales
         const status = noHpp ? 'no_estimator' : isVendor ? 'vendor' : notValidated ? 'no_purchasing' : 'complete'
-        // Pengerjaan: Vendor kalau sumber harga deal-nya vendor, selain itu
-        // Workshop (termasuk yang belum diisi Estimator - defaultnya internal).
-        const pengerjaan = isVendor ? 'vendor' : 'workshop'
+        // Pengerjaan: langsung dari data ERP (nama_vendor), bukan dari
+        // deal_price_source kita - biar kelihatan buat SEMUA order (termasuk
+        // yang belum diisi Estimator), bukan cuma yang sudah diproses di app.
+        // nama_vendor = 'Risepack/WO' -> Workshop, selain itu -> Vendor.
+        const pengerjaan = erp?.nama_vendor === 'Risepack/WO' ? 'workshop' : 'vendor'
         return {
           kode_order: key,
           pic: erp?.sales_name || null,
