@@ -103,6 +103,11 @@ export default function DashboardPantau() {
           nama_spk: erp?.nama_customer || g.quotations[0]?.customer_name || null,
           nama_produk: erp?.nama_produk || g.quotations.map(q => q.product_type).join(', '),
           jumlah_produk: erp?.jumlah_produk ?? g.quotations.reduce((s, q) => s + (Number(q.quantity) || 0), 0),
+          tgl_order: erp?.tgl_order || null,
+          tgl_faw: erp?.tgl_faw || null,
+          jenis_bahan: erp?.jenis_bahan || null,
+          modal_sales: erp?.modal_sales ?? null,
+          status_deal_erp: erp?.status_deal || null,
           hppSales: g.hppSales,
           cogsProyeksi: g.cogsProyeksi,
           isVendor: g.isVendor,
@@ -177,6 +182,11 @@ export default function DashboardPantau() {
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Nama SPK</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Nama Produk</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Jumlah Produk</th>
+                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Jenis Bahan</th>
+                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal Order</th>
+                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal FAW</th>
+                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Modal Sales</th>
+                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Status Deal (ERP)</th>
                     <th style={{ ...s.th, background:COL_HPP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Total HPP Sales</th>
                     <th style={{ ...s.th, background:COL_COGS, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Total COGS Proyeksi</th>
                     <th style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>Status</th>
@@ -193,6 +203,11 @@ export default function DashboardPantau() {
                         <td style={s.td}>{r.nama_spk || '—'}</td>
                         <td style={s.td}>{r.nama_produk || '—'}</td>
                         <td style={{ ...s.td, textAlign:'right' }}>{fmt(r.jumlah_produk)}</td>
+                        <td style={{ ...s.td, color: r.jenis_bahan ? C.dark : '#d1d5db' }}>{r.jenis_bahan || '—'}</td>
+                        <td style={{ ...s.td, color: r.tgl_order ? C.dark : '#d1d5db' }}>{r.tgl_order ? new Date(r.tgl_order).toLocaleDateString('id-ID') : '—'}</td>
+                        <td style={{ ...s.td, color: r.tgl_faw ? C.dark : '#d1d5db' }}>{r.tgl_faw ? new Date(r.tgl_faw).toLocaleDateString('id-ID') : '—'}</td>
+                        <td style={{ ...s.td, textAlign:'right', color: r.modal_sales != null ? C.dark : '#d1d5db' }}>{r.modal_sales != null ? idr(r.modal_sales) : '—'}</td>
+                        <td style={{ ...s.td, color: r.status_deal_erp ? C.dark : '#d1d5db' }}>{r.status_deal_erp || '—'}</td>
                         <td style={{ ...s.td, textAlign:'right', fontWeight:500, color: noHpp ? '#dc2626' : C.dark }}>
                           {noHpp ? 'Belum diisi' : idr(r.hppSales)}
                         </td>
