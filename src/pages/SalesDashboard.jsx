@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import KodeOrderPicker from '../components/KodeOrderPicker'
 
 const PRODUCT_TYPES = {
   'Hardbox': [
@@ -839,10 +840,8 @@ export default function SalesDashboard() {
             </div>
 
             <label style={{ fontSize:12, fontWeight:500, color:C.brown, display:'block', marginTop:12, marginBottom:4 }}>Kode Order</label>
-            <input autoFocus style={s.input} value={dealCodeModal.code}
-              onChange={e => setDealCodeModal(m => ({ ...m, code: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter' && canSubmit) confirmDealCode() }}
-              placeholder="contoh: SO-2026-0912" />
+            <KodeOrderPicker autoFocus inputStyle={s.input} value={dealCodeModal.code}
+              onChange={val => setDealCodeModal(m => ({ ...m, code: val }))} />
 
             {needsPriceSource && (
               <>

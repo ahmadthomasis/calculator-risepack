@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import Layout from '../components/Layout'
+import KodeOrderPicker from '../components/KodeOrderPicker'
 
 const fmt = n => (n || 0).toLocaleString('id-ID')
 const idr = n => 'Rp ' + fmt(Math.round(n || 0))
@@ -520,12 +521,9 @@ export default function ManagerDashboard() {
             </div>
 
             <label style={{ fontSize:12, fontWeight:500, color:'#374151', display:'block', marginTop:12, marginBottom:4 }}>Kode Order</label>
-            <input autoFocus
-              value={dealCodeModal.code}
-              onChange={e => setDealCodeModal(m => ({ ...m, code: e.target.value }))}
-              onKeyDown={e => { if (e.key === 'Enter' && canSubmit) confirmDealCode() }}
-              placeholder="contoh: SO-2026-0912"
-              style={{ width:'100%', padding:'9px 12px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box' }} />
+            <KodeOrderPicker autoFocus value={dealCodeModal.code}
+              onChange={val => setDealCodeModal(m => ({ ...m, code: val }))}
+              inputStyle={{ width:'100%', padding:'9px 12px', border:'1px solid #d1d5db', borderRadius:8, fontSize:14, outline:'none', boxSizing:'border-box' }} />
 
             {needsPriceSource && (
               <>
