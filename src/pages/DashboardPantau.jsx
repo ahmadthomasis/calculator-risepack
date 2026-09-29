@@ -164,6 +164,7 @@ export default function DashboardPantau() {
           tgl_order: erp?.tgl_order || null,
           tgl_faw: erp?.tgl_faw || null,
           jenis_bahan: erp?.jenis_bahan || null,
+          nama_vendor: erp?.nama_vendor || null,
           modal_sales: erp?.modal_sales ?? null,
           hppSales,
           cogsProyeksi,
@@ -316,7 +317,7 @@ export default function DashboardPantau() {
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Nama SPK</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Nama Produk</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Jumlah Produk</th>
-                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Jenis Bahan</th>
+                    <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Nama Vendor</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal Order</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1 }}>Tanggal FAW</th>
                     <th style={{ ...s.th, background:COL_ERP, position:'sticky', top:0, zIndex:1, textAlign:'right' }}>Modal Sales</th>
@@ -335,7 +336,7 @@ export default function DashboardPantau() {
                         <td style={s.td}>{r.nama_spk || '—'}</td>
                         <td style={s.td}>{r.nama_produk || '—'}</td>
                         <td style={{ ...s.td, textAlign:'right' }}>{fmt(r.jumlah_produk)}</td>
-                        <td style={{ ...s.td, color: r.jenis_bahan ? C.dark : '#d1d5db' }}>{r.jenis_bahan || '—'}</td>
+                        <td style={{ ...s.td, color: r.nama_vendor ? C.dark : '#d1d5db' }}>{r.nama_vendor || '—'}</td>
                         <td style={{ ...s.td, color: r.tgl_order ? C.dark : '#d1d5db' }}>{fmtDate(r.tgl_order) || '—'}</td>
                         <td style={{ ...s.td, color: r.tgl_faw ? C.dark : '#d1d5db' }}>{fmtDate(r.tgl_faw) || '—'}</td>
                         <td style={{ ...s.td, textAlign:'right', color: r.modal_sales != null ? C.dark : '#d1d5db' }}>{r.modal_sales != null ? idr(r.modal_sales) : '—'}</td>
