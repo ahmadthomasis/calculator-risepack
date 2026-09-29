@@ -17,7 +17,7 @@ const COL_COGS = '#FDEBD3'     // krem - COGS Proyeksi (purchasing)
 // dibuang dari query supaya data yang ditarik & ditabelkan lebih ringan.
 // HARUS SAMA dengan FAW_CUTOFF di apps_script_erp_sync.gs (script sync
 // ERP -> Supabase) -- kalau salah satu diubah, update juga yang satunya.
-const FAW_CUTOFF = '2026-02-11'
+const FAW_CUTOFF = '2026-09-01'
 
 // Status Pengisian: gap yang perlu dikejar. Kosong (tidak ada yang dicentang) = tampilkan semua.
 const PENGISIAN_OPTIONS = [
