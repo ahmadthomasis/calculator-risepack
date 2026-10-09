@@ -21,8 +21,8 @@ const FAW_CUTOFF = '2026-09-01'
 
 // Status Pengisian: gap yang perlu dikejar. Kosong (tidak ada yang dicentang) = tampilkan semua.
 const PENGISIAN_OPTIONS = [
-  { key:'no_estimator', label:'Belum diisi Estimator' },
-  { key:'no_purchasing', label:'Belum divalidasi Purchasing' },
+  { key:'no_estimator', label:'Belum Ada HPP Sales' },
+  { key:'no_purchasing', label:'Belum Ada COGS Proyeksi' },
 ]
 // Status Pengerjaan: sumber harga deal-nya. Kosong = tampilkan semua.
 const PENGERJAAN_OPTIONS = [
@@ -413,11 +413,11 @@ export default function DashboardPantau() {
                           ) : r.status === 'no_vendor_info' ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fffbeb', color:'#92400e' }} title="ERP belum catat vendor/workshop buat order ini">⚠️ Isi Nama Vendor</span>
                           ) : r.status === 'no_estimator' ? (
-                            <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fef2f2', color:'#dc2626' }}>⚠️ Belum diisi Estimator</span>
+                            <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fef2f2', color:'#dc2626' }}>⚠️ Belum Ada HPP Sales</span>
                           ) : r.status === 'vendor' ? (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#f1efe8', color:'#5f5e5a' }}>Vendor</span>
                           ) : r.status === 'no_purchasing' ? (
-                            <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fffbeb', color:'#92400e' }}>⚠️ Belum divalidasi Purchasing</span>
+                            <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#fffbeb', color:'#92400e' }}>⚠️ Belum Ada COGS Proyeksi</span>
                           ) : (
                             <span style={{ padding:'2px 8px', borderRadius:12, fontSize:11, fontWeight:500, background:'#EAF3DE', color:'#3B6D11' }}>✓ Lengkap</span>
                           )}
