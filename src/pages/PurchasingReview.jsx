@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import SalinOrderLama from '../components/SalinOrderLama'
 
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
 
@@ -137,7 +138,16 @@ export default function PurchasingReview() {
   const [loading,     setLoading]     = useState(true)
   const [savingDraft,  setSavingDraft]  = useState(false)
   const [draftSaved,   setDraftSaved]   = useState(false)
-  // const [revisionNote, setRevisionNote] = useState('') -- aktifkan setelah ALTER TABLE
+  // Permintaan revisi ke estimator. SENGAJA dipisah dari `notes`
+  // (purchasing_notes): notes itu catatan biasa yang ikut tersimpan setiap
+  // Save Proyeksi, sedangkan ini pernyataan eksplisit "ada yang harus
+  // diperbaiki estimator". Lihat supabase/purchasing_revisi_migration.sql.
+  const [revisionNote,  setRevisionNote]  = useState('')
+  const [needsRevision, setNeedsRevision] = useState(false)
+  const [sendingRev,    setSendingRev]    = useState(false)
+  // Modal "Salin harga purchasing dari Kode Order lama" (repeat order).
+  const [salinOpen, setSalinOpen] = useState(false)
+  const [salinInfo, setSalinInfo] = useState(null)
   const [dbAdditional,setDbAdditional]= useState([])
   const [finSplitRules, setFinSplitRules] = useState({}) // proses -> { pct_upah, pct_bahan, pct_mesin }
 
@@ -190,7 +200,8 @@ export default function PurchasingReview() {
     setComparisons(compMap)
     setDbAdditional(addlMaster || [])
     setNotes(q.purchasing_notes || '')
-    // setRevisionNote(q.revision_note || '') -- aktifkan setelah ALTER TABLE
+    setRevisionNote(q.revision_note || '')
+    setNeedsRevision(!!q.needs_revision)
     setLoading(false)
   }
 
@@ -228,6 +239,82 @@ export default function PurchasingReview() {
         ...prev,
         [key]: { ...cur, ...parts, purchasing_price: total, estimator_price: estimatorPrice, item_name: itemName },
       }
+    })
+  }
+
+  // ── Salin harga purchasing dari order lama (repeat order) ──────────────
+  //
+  // Dicocokkan lewat NAMA ITEM di dalam section yang sama, bukan posisi baris.
+  // Dua order berbeda hampir pasti punya urutan baris yang berbeda, jadi
+  // menyalin per posisi akan menempelkan harga ke item yang salah.
+  //
+  // Dua aturan yang disengaja:
+  //   1. Baris yang SUDAH ada harganya TIDAK ditimpa. Hasil kerja sendiri (atau
+  //      rekan yang sedang mengisi area lain) tidak boleh hilang karena salin.
+  //   2. Baris yang namanya tidak ada di order lama dibiarkan kosong, supaya
+  //      jelas mana yang masih perlu dicek manual.
+  function normNamaItem(v) {
+    const s = String(v ?? '').trim().toLowerCase()
+    return (s === '' || s === '—' || s === '-') ? '' : s
+  }
+
+  async function salinHargaDariOrderLama(sumber) {
+    const { data: comps, error } = await supabase
+      .from('purchasing_comparisons').select('*').eq('quotation_id', sumber.id)
+    if (error) throw error
+
+    const peta = {}
+    ;(comps || []).forEach(c => {
+      if (c.purchasing_price == null || c.purchasing_price === '') return
+      const nama = normNamaItem(c.item_name)
+      if (!nama) return
+      if (!peta[c.section]) peta[c.section] = {}
+      // Item kembar: yang pertama menang, supaya hasilnya tidak bergantung
+      // pada urutan baris yang dikembalikan database.
+      if (!(nama in peta[c.section])) peta[c.section][nama] = c
+    })
+
+    const next  = { ...comparisons }
+    const dirty = new Set(dirtyKeys)
+    let terisi = 0, dilewati = 0, tidakKetemu = 0
+
+    SECTIONS.forEach(sec => {
+      const rows = quotation?.[sec.key]
+      if (!Array.isArray(rows)) return
+      const cols = SECTION_COLS[sec.key] || []
+      const priceCol = cols.find(c => c.priceField)
+      rows.forEach((row, i) => {
+        const key  = `${sec.key}-${i}`
+        const ada  = next[key]?.purchasing_price
+        if (ada != null && ada !== '') { dilewati++; return }
+
+        const label  = cols[0]?.render(row) || ''
+        const sumberBaris = peta[sec.dbSection]?.[normNamaItem(label)]
+        if (!sumberBaris) { tidakKetemu++; return }
+
+        const estPrice = sec.key === 'additional_cost'
+          ? resolveAdditionalHarga(row)
+          : (priceCol ? (Number(row[priceCol.priceField]) || 0) : 0)
+
+        next[key] = {
+          ...(next[key] || {}),
+          purchasing_price: Number(sumberBaris.purchasing_price),
+          purchasing_upah:  sumberBaris.purchasing_upah  ?? null,
+          purchasing_bahan: sumberBaris.purchasing_bahan ?? null,
+          purchasing_mesin: sumberBaris.purchasing_mesin ?? null,
+          estimator_price:  Number(estPrice) || 0,
+          item_name: label || `Row ${i + 1}`,
+        }
+        dirty.add(key)
+        terisi++
+      })
+    })
+
+    setComparisons(next)
+    setDirtyKeys(dirty)
+    setSalinInfo({
+      kode: sumber.kode_order || sumber.customer_name || 'order lama',
+      terisi, dilewati, tidakKetemu,
     })
   }
 
@@ -382,6 +469,71 @@ export default function PurchasingReview() {
     return true
   }
 
+  // Purchasing tidak bisa menambah baris item -- hanya estimator yang bisa.
+  // Jadi kalau ada item yang tertinggal, satu-satunya jalan adalah meminta
+  // estimator memperbaiki. Ini membuat permintaan itu tercatat di aplikasi,
+  // bukan lewat WhatsApp yang tidak ada jejaknya.
+  //
+  // Tidak ada tombol "revisi selesai": begitu estimator menyimpan ulang,
+  // Calculator.jsx membuat baris quotation baru yang needs_revision-nya
+  // default false. Revisi beres karena diperbaiki, bukan karena diklik.
+  async function requestRevision(cancel = false) {
+    const catatan = revisionNote.trim()
+    if (!cancel && !catatan) {
+      alert('Tulis dulu apa yang harus diperbaiki estimator, supaya dia tahu yang mana.')
+      return
+    }
+    if (cancel && !confirm('Batalkan permintaan revisi ini?')) return
+
+    setSendingRev(true)
+    const targetId = quotation?.id || quotationId
+    // Status purchasing ikut dipindah ke HOLD, bukan dibiarkan 'pending'.
+    //
+    // Alasannya soal kejujuran antrean: 'pending' (Belum Diputuskan) berarti
+    // "bolanya di purchasing". Selama item belum lengkap, bolanya justru di
+    // estimator -- purchasing tidak bisa memutuskan apa pun. Kalau dibiarkan
+    // 'pending', order ini menumpuk di kartu "Menunggu Validasi" dan membuat
+    // angka prioritas purchasing bohong.
+    //
+    // Beda "hold karena minta revisi" dan "hold karena alasan lain" dibawa
+    // oleh needs_revision, jadi keduanya tetap bisa dipisah di filter.
+    const { data, error } = await supabase.from('quotations').update(
+      cancel
+        ? {
+            needs_revision: false,
+            revision_requested_at: null,
+            revision_requested_by: null,
+            // Permintaan dibatalkan -> bola kembali ke purchasing.
+            purchasing_status: 'pending',
+          }
+        : {
+            needs_revision: true,
+            revision_note: catatan,
+            revision_requested_at: new Date().toISOString(),
+            revision_requested_by: profile?.id || null,
+            purchasing_status: 'hold',
+          }
+    ).eq('id', targetId).select('id')
+
+    if (error) {
+      console.error('Gagal mengirim permintaan revisi:', error)
+      alert('Gagal mengirim permintaan revisi: ' + error.message)
+      setSendingRev(false)
+      return
+    }
+    // PostgREST: UPDATE yang ditolak RLS mengenai 0 baris TANPA error.
+    // Tanpa .select('id') ini akan terlihat "berhasil" padahal tidak tersimpan.
+    if (!data || data.length === 0) {
+      alert('Permintaan revisi TIDAK tersimpan — tidak ada baris yang berubah.\n\nKemungkinan akun Anda belum punya izin mengubah quotation ini.')
+      setSendingRev(false)
+      return
+    }
+    setNeedsRevision(!cancel)
+    setSendingRev(false)
+    // Muat ulang supaya header & status di layar ikut menunjukkan Hold.
+    loadAll()
+  }
+
   async function saveProyeksi() {
     setSavingDraft(true)
     const saved = await saveComparisons()
@@ -446,6 +598,57 @@ export default function PurchasingReview() {
         border:`0.5px solid ${C.border}`, borderRadius:8, fontSize:13,
         fontWeight:500, cursor:'pointer', color:C.brown,
       }}>← Kembali ke Antrian</button>
+
+      {/* Repeat order: tarik harga purchasing dari order lama, lalu tinggal
+          dicek yang berubah. Ditaruh paling atas supaya terlihat SEBELUM
+          purchasing mulai mengisi harga satu per satu. */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:18, flexWrap:'wrap' }}>
+        <button onClick={() => setSalinOpen(true)} style={{
+          padding:'8px 16px', borderRadius:8, border:`1px solid ${C.border}`,
+          background:'#fff', fontSize:13, fontWeight:600, color:C.dark, cursor:'pointer',
+        }}>📄 Salin harga dari Kode Order lama</button>
+        <span style={{ fontSize:11, color:'#9ca3af' }}>
+          Untuk repeat order — harga lama diisikan ke item dengan nama yang sama. Harga yang sudah Anda isi tidak ditimpa.
+        </span>
+        {salinInfo && (
+          <span style={{
+            fontSize:11.5, fontWeight:600, color:'#3b6d11', background:'#f0fdf4',
+            border:'1px solid #bbf7d0', borderRadius:20, padding:'3px 10px',
+          }} title={`Dilewati karena sudah ada harganya: ${salinInfo.dilewati}\nTidak ketemu di order lama: ${salinInfo.tidakKetemu}`}>
+            ✓ {salinInfo.terisi} harga terisi dari {salinInfo.kode}
+            {salinInfo.tidakKetemu > 0 ? ` · ${salinInfo.tidakKetemu} item perlu dicek manual` : ''}
+            {' '}— belum tersimpan, tekan Save Proyeksi
+          </span>
+        )}
+      </div>
+
+      {salinOpen && (
+        <SalinOrderLama
+          mode="cogs"
+          excludeId={quotation?.id}
+          onPick={salinHargaDariOrderLama}
+          onClose={() => setSalinOpen(false)}
+        />
+      )}
+
+      {/* Keputusan purchasing dicabut karena estimator mengubah perhitungan.
+          Ditaruh di atas Header Info supaya terbaca sebelum purchasing mulai
+          memeriksa angkanya. */}
+      {quotation.decision_reset_note && (
+        <div style={{ marginBottom:18, border:'1px solid #FCD34D', borderRadius:10, overflow:'hidden' }}>
+          <div style={{ background:'#FFFBEB', padding:'12px 16px', display:'flex', alignItems:'flex-start', gap:10 }}>
+            <span style={{ fontSize:15, lineHeight:1.4 }}>↻</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#92400E', marginBottom:4 }}>
+                Keputusan sebelumnya sudah tidak berlaku
+              </div>
+              <div style={{ fontSize:13, color:'#78350F', lineHeight:1.6 }}>
+                {quotation.decision_reset_note}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Header Info */}
       <div style={{ background:'#fff', border:`0.5px solid ${C.border}`, borderLeft:`4px solid ${C.orange}`, borderRadius:10, padding:'14px 18px', marginBottom:18 }}>
@@ -793,7 +996,52 @@ export default function PurchasingReview() {
         />
       </div>
 
-      {/* Box request revisi ke estimator — aktifkan setelah ALTER TABLE dijalankan */}
+      {/* Minta revisi ke estimator. Dipisah dari kotak Catatan di atas supaya
+          jelas bedanya: Catatan dibaca Sales/Manager, yang ini TUGAS untuk
+          estimator dan memunculkan badge di Antrian Estimator. */}
+      <div style={{
+        background: needsRevision ? '#FFFBEB' : '#fff',
+        border: `1px solid ${needsRevision ? '#FCD34D' : C.border}`,
+        borderRadius:10, padding:16, marginBottom:18,
+      }}>
+        <label style={{ fontSize:13, fontWeight:600, color:C.dark, display:'block', marginBottom:4 }}>
+          Minta Revisi ke Estimator
+        </label>
+        <div style={{ fontSize:11, color:'#9ca3af', marginBottom:8, lineHeight:1.5 }}>
+          Dipakai kalau ada <strong>item yang belum diinput estimator</strong> — purchasing tidak
+          bisa menambah baris item sendiri. Permintaan ini muncul sebagai badge di Antrian
+          Estimator, dan hilang sendiri setelah estimator menyimpan perhitungan yang sudah
+          diperbaiki.
+          <br />
+          Status order ini otomatis jadi <strong>Hold</strong> selama menunggu, supaya tidak
+          ikut terhitung di <em>Menunggu Validasi</em> — bolanya memang sedang di estimator.
+          Harga yang sudah Anda isi tetap tersimpan.
+        </div>
+        <textarea rows={3} value={revisionNote} onChange={e => setRevisionNote(e.target.value)}
+          placeholder="Contoh: Item Hot Print pada cover belum masuk perhitungan, tolong ditambahkan."
+          style={{ width:'100%', padding:'9px 12px', border:`1px solid ${C.border}`, borderRadius:7, fontSize:13, resize:'vertical', boxSizing:'border-box', color:C.dark, outline:'none' }}
+        />
+        <div style={{ display:'flex', gap:8, alignItems:'center', marginTop:10, flexWrap:'wrap' }}>
+          <button onClick={() => requestRevision(false)} disabled={sendingRev}
+            style={{ padding:'9px 16px', borderRadius:7, border:'none', fontSize:13, fontWeight:600,
+                     cursor: sendingRev ? 'not-allowed' : 'pointer',
+                     background: sendingRev ? '#d1d5db' : '#B45309', color:'#fff' }}>
+            {sendingRev ? 'Mengirim...' : needsRevision ? '↻ Perbarui Permintaan' : '📋 Minta Revisi ke Estimator'}
+          </button>
+          {needsRevision && (
+            <>
+              <button onClick={() => requestRevision(true)} disabled={sendingRev}
+                style={{ padding:'9px 16px', borderRadius:7, border:`1px solid ${C.border}`, background:'#fff',
+                         fontSize:13, color:'#6b7280', cursor: sendingRev ? 'not-allowed' : 'pointer' }}>
+                ✕ Batalkan Permintaan
+              </button>
+              <span style={{ fontSize:12, color:'#92400E', fontWeight:600 }}>
+                ⚠ Sedang menunggu estimator
+              </span>
+            </>
+          )}
+        </div>
+      </div>
 
       {/* Save Proyeksi — satu-satunya aksi di halaman ini.
           Keputusan Disetujui / Hold / Cancel TIDAK lagi di sini; dipilih lewat

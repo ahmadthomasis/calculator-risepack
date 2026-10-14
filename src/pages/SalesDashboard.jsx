@@ -365,6 +365,17 @@ export default function SalesDashboard() {
     .map(([id, n]) => ({ id, name: names[id] || '—', n }))
     .sort((a, b) => b.n - a.n)
   const isManager = profile?.role === 'manager'
+  // Innersales memegang 1-2 akun sales; sejak
+  // supabase/innersales_pegangan_migration.sql, query-nya mengembalikan order
+  // miliknya SENDIRI plus order sales pegangannya. Karena isinya bisa milik
+  // beberapa orang, filter per sales dan label "oleh ..." ikut ditampilkan --
+  // sebelumnya hanya manager yang mendapatkannya.
+  //
+  // Penyaringan sebenarnya dilakukan RLS, bukan di sini. Jadi tidak ada
+  // kemungkinan innersales melihat order di luar pegangannya walau ia
+  // mengubah tampilan atau memanggil API langsung.
+  const isInnersales = profile?.role === 'sales' && !!profile?.is_innersales
+  const lihatMilikOrangLain = isManager || isInnersales
 
   const filteredRequests = requests
     .filter(r => salesFilter === 'all' || r.sales_id === salesFilter)
@@ -394,15 +405,19 @@ export default function SalesDashboard() {
 
       <div style={{ marginBottom:16, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:12 }}>
         <div>
-          <div style={{ fontSize:16, fontWeight:600, color:C.dark }}>{isManager ? 'Semua Request Harga' : 'Request Harga Saya'}</div>
-          {isManager && salesRanking.length > 0 && (
+          <div style={{ fontSize:16, fontWeight:600, color:C.dark }}>
+            {isManager ? 'Semua Request Harga'
+              : isInnersales ? 'Request Harga — Saya & Sales Pegangan'
+              : 'Request Harga Saya'}
+          </div>
+          {lihatMilikOrangLain && salesRanking.length > 0 && (
             <div style={{ fontSize:11.5, color:'#9ca3af', marginTop:2 }}>
               Sales terbanyak: {salesRanking.slice(0, 3).map(sr => `${sr.name} (${sr.n})`).join(' · ')}
             </div>
           )}
         </div>
         <div style={{ display:'flex', gap:10, alignItems:'center' }}>
-          {isManager && salesRanking.length > 0 && (
+          {lihatMilikOrangLain && salesRanking.length > 0 && (
             <select value={salesFilter} onChange={e => setSalesFilter(e.target.value)} title="Filter per sales (pembuat request)"
               style={{ padding:'8px 12px', borderRadius:8, border:`1px solid ${C.border}`, fontSize:13, outline:'none', background:'#fff', color:C.dark }}>
               <option value="all">Semua Sales ({requests.length})</option>
@@ -668,7 +683,7 @@ export default function SalesDashboard() {
                 <tr key={r.id}>
                   <td style={s.td}>
                     <span style={{ fontFamily:'monospace', fontSize:12, color:C.brown }}>{r.request_number}</span>
-                    {isManager && <div style={{ fontSize:10.5, color:'#9ca3af' }}>oleh {names[r.sales_id] || '—'}</div>}
+                    {lihatMilikOrangLain && <div style={{ fontSize:10.5, color:'#9ca3af' }}>oleh {names[r.sales_id] || '—'}</div>}
                   </td>
                   <td style={s.td}><div style={{ fontWeight:500 }}>{r.customer_name}</div></td>
                   <td style={s.td}>

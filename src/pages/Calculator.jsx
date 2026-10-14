@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import SalinOrderLama from '../components/SalinOrderLama'
 
 const fmt  = n => (n || 0).toLocaleString('id-ID')
 const num  = v => parseFloat(v) || 0
@@ -82,6 +83,108 @@ const newCetak     = () => ({ id:Date.now(), nama:'', mesin:'SM 74', warna:'4 wa
 const newEmboss    = () => ({ id:Date.now(), nama:'', proses:'Laminasi Doff', quantity:0, luas_permukaan:'', insheet:0, harga_per_cm2:0, mata:0 })
 const newMatProses = () => ({ id:Date.now(), nama:'', proses:'', harga_satuan:0, quantity:1, luas_permukaan:'' })
 const newFinishing = () => ({ id:Date.now(), nama:'', proses:'', spesifik:'', harga_satuan:0 })
+// ── Pencocokan ulang harga purchasing saat estimator simpan ulang ─────────
+//
+// Tabel purchasing_comparisons menyimpan harga purchasing per (section,
+// row_index). row_index = POSISI baris, bukan identitas item. Jadi kalau
+// estimator menambah/menghapus item, posisi bergeser dan harga purchasing
+// nempel ke item lain. Ini TIDAK menimbulkan error -- cuma angka yang salah.
+//
+// Supaya tidak bergantung pada posisi, setiap baris lama dicocokkan ke baris
+// baru lewat tiga lapis, dari yang paling kuat:
+//   1. row.id    -- id internal baris, ikut tersimpan di JSONB dan tetap sama
+//                   selama estimator tidak menghapus lalu membuat baris baru.
+//   2. tanda tangan isi -- gabungan kolom pengenal per section (nama,
+//                   material, mesin, proses, ...), dinormalkan.
+//   3. tidak cocok -> harga purchasing untuk baris itu DIBUANG. Lebih baik
+//                   purchasing mengisi ulang satu baris daripada diam-diam
+//                   memakai harga item lain.
+const CMP_PRIMARY_FIELD = {
+  material: 'nama', cetak: 'nama', emboss: 'proses',
+  mat_proses: 'proses', finishing: 'proses', additional: 'nama',
+}
+
+function cmpRowSignature(section, r) {
+  if (!r) return ''
+  const p = v => String(v ?? '').trim().toLowerCase()
+  const parts =
+    section === 'material'   ? [p(r.nama), p(r.material), p(r.gsm), p(r.plano)] :
+    section === 'cetak'      ? [p(r.nama), p(r.mesin), p(r.warna)] :
+    section === 'emboss'     ? [p(r.nama), p(r.proses)] :
+    section === 'mat_proses' ? [p(r.nama), p(r.proses)] :
+    section === 'finishing'  ? [p(r.nama), p(r.proses), p(r.spesifik)] :
+    section === 'additional' ? [p(r.nama), p(r.proses), p(r.keterangan)] :
+    []
+  // Kalau semua kolom pengenal kosong, tanda tangannya dianggap tidak ada
+  // supaya baris kosong tidak saling cocok sembarangan.
+  return parts.some(x => x !== '') ? parts.join('|') : ''
+}
+
+// Hasil: Map oldRowIndex -> newRowIndex. Satu baris baru hanya boleh dipakai
+// satu kali, jadi item kembar tidak menumpuk di satu baris.
+function cmpBuildIndexMap(section, oldRows, newRows) {
+  const map = new Map()
+  const usedNew = new Set()
+  const pass = keyOf => {
+    oldRows.forEach((oldRow, oi) => {
+      if (map.has(oi)) return
+      const key = keyOf(oldRow)
+      if (!key) return
+      for (let ni = 0; ni < newRows.length; ni++) {
+        if (usedNew.has(ni)) continue
+        if (keyOf(newRows[ni]) === key) { map.set(oi, ni); usedNew.add(ni); break }
+      }
+    })
+  }
+  pass(r => (r && r.id != null && r.id !== '') ? `id:${r.id}` : '')
+  pass(r => cmpRowSignature(section, r))
+  return map
+}
+
+export function remapComparisons(oldComps, oldQuot, newRowsBySection, newQuotationId) {
+  const oldRowsBySection = {
+    material:   oldQuot?.material_cost,
+    cetak:      oldQuot?.cetak_cost,
+    emboss:     oldQuot?.emboss_laminasi,
+    mat_proses: oldQuot?.material_proses,
+    finishing:  oldQuot?.finishing_wo,
+    additional: oldQuot?.additional_cost,
+  }
+
+  const maps = {}
+  Object.keys(oldRowsBySection).forEach(section => {
+    const oldRows = oldRowsBySection[section]
+    const newRows = newRowsBySection[section]
+    if (!Array.isArray(oldRows) || !Array.isArray(newRows)) { maps[section] = null; return }
+    maps[section] = cmpBuildIndexMap(section, oldRows, newRows)
+  })
+
+  const kept = []
+  const dropped = []
+  oldComps.forEach(({ id: _id, quotation_id: _qid, ...rest }) => {
+    const map = maps[rest.section]
+    // maps[section] === null berarti kita tidak punya data baris lama/baru
+    // untuk section itu. Daripada membuang harga purchasing, pertahankan
+    // posisi apa adanya seperti perilaku lama.
+    const newIndex = map ? map.get(rest.row_index) : rest.row_index
+    if (newIndex == null) {
+      dropped.push({ section: rest.section, row_index: rest.row_index, item_name: rest.item_name })
+      return
+    }
+    const newRow = (newRowsBySection[rest.section] || [])[newIndex]
+    const primary = newRow ? newRow[CMP_PRIMARY_FIELD[rest.section] || 'nama'] : null
+    kept.push({
+      ...rest,
+      quotation_id: newQuotationId,
+      row_index: newIndex,
+      // Nama item disegarkan dari baris yang baru supaya laporan purchasing
+      // tidak menampilkan nama lama kalau estimator sempat menggantinya.
+      item_name: (primary && String(primary).trim()) ? String(primary).trim() : rest.item_name,
+    })
+  })
+  return { kept, dropped }
+}
+
 const newAdditional= () => ({ id:Date.now(), nama:'', proses:'', keterangan:'', luas_permukaan:'', gramasi:'', panjang_lem:'', quantity:0, harga:0 })
 
 export default function Calculator() {
@@ -197,7 +300,91 @@ export default function Calculator() {
     }
   }
 
+  // Modal "Salin dari Kode Order lama" (repeat order).
+  const [salinOpen, setSalinOpen] = useState(false)
+  const [salinInfo, setSalinInfo] = useState(null)
+
   useEffect(() => { loadAll() }, [requestId])
+
+  // Salin keenam array baris biaya dari perhitungan order lama.
+  //
+  // SALIN = SALIN APA ADANYA, qty termasuk. Keputusan pemilik, 14 Okt 2026.
+  //
+  // Dua versi sebelumnya salah arah, dan sejarahnya ditulis di sini supaya
+  // tidak diulang:
+  //
+  //   v1 mengosongkan qty dan insheet (meniru cloneRows() untuk salin
+  //      antar-qty). Akibatnya harga per pcs material -- yang butuh
+  //      quantity > 0 DAN insheet > 0, lihat calcMaterial -- jadi 0 semua,
+  //      kolom Harga/pcs "—" dan Subtotal Rp 0. Di layar terlihat seperti
+  //      salinannya gagal, dan estimator tetap mengisi ulang qty 25 baris.
+  //
+  //   v2 menskalakan qty mengikuti perbandingan volume order. Angkanya
+  //      langsung terisi, tapi hasilnya tidak bisa ditebak pengguna: baris
+  //      yang qty-nya tidak sebanding volume (mis. borongan qty 1) ikut
+  //      dikalikan, dan orang yang menekan "salin" tidak mengharapkan
+  //      angkanya berubah sendiri.
+  //
+  // Sekarang: semua kolom dibawa persis seperti order lama, termasuk quantity
+  // dan insheet. Yang terlihat di order lama itulah yang didapat. Penyesuaian
+  // qty ke volume order ini tersedia sebagai SATU TOMBOL terpisah
+  // (sesuaikanQtySalinan) -- jadi perubahan angka selalu hasil tindakan
+  // pengguna, bukan tebakan aplikasi.
+  //
+  // `id` tiap baris diperbarui supaya baris hasil salinan punya identitas
+  // sendiri. Tanpa itu, pencocokan harga purchasing saat simpan ulang bisa
+  // mengira baris ini adalah baris milik order lama.
+  function salinDariOrderLama(q) {
+    const qtyLama = num(q.quantity)
+    const siap = rows => (Array.isArray(rows) ? rows : []).map((r, i) => ({
+      ...r,
+      id: Date.now() + i + Math.random(),
+    }))
+    setMaterial(siap(q.material_cost))
+    setCetak(siap(q.cetak_cost))
+    setEmboss(siap(q.emboss_laminasi))
+    setMatProses(siap(q.material_proses))
+    setFinishing(siap(q.finishing_wo))
+    setAdditional(siap(q.additional_cost))
+    setSalinInfo({
+      kode: q.kode_order || q.customer_name || 'order lama',
+      jumlah: ['material_cost','cetak_cost','emboss_laminasi','material_proses','finishing_wo','additional_cost']
+        .reduce((n, c) => n + (Array.isArray(q[c]) ? q[c].length : 0), 0),
+      // Dipakai badge untuk memberi tahu mana dari tiga keadaan yang terjadi:
+      // volume sama (salinan identik), volume beda (qty diskalakan), atau qty
+      // order lama tidak diketahui (qty dibawa apa adanya).
+      qtyLama,
+      // Volume order lama vs order ini. Kalau beda, qty hasil salinan mengacu
+      // ke volume yang salah sampai estimator menyesuaikannya.
+      bedaVolume: !!(qtyLama && activeQty && qtyLama !== activeQty),
+      sudahDisesuaikan: false,
+    })
+  }
+
+  // Menyesuaikan qty seluruh baris dari volume order lama ke volume order ini,
+  // dengan perbandingan: qty_baris x (qty_order_ini / qty_order_lama). Jadi
+  // baris yang di order lama 1.300 jadi 4.000, dan komponen yang 2.600 (dua
+  // buah per box) jadi 8.000 -- hubungan per-unit-nya terjaga.
+  //
+  // Hanya ditawarkan tepat setelah menyalin, dan hilang setelah dipakai:
+  // sesudah estimator mengubah qty sendiri, perbandingan lama tidak sah lagi
+  // dan menekannya kedua kali justru merusak angkanya.
+  function sesuaikanQtySalinan() {
+    const qtyLama = num(salinInfo?.qtyLama)
+    if (!qtyLama || !activeQty) return
+    const skala = rows => rows.map(r => {
+      const v = num(r.quantity)
+      if (!v) return r
+      return { ...r, quantity: Math.round((v / qtyLama) * activeQty) }
+    })
+    setMaterial(skala)
+    setCetak(skala)
+    setEmboss(skala)
+    setMatProses(skala)
+    setFinishing(skala)
+    setAdditional(skala)
+    setSalinInfo(p => p && { ...p, sudahDisesuaikan: true, bedaVolume: false })
+  }
 
   // Dipanggil dari Layout (lewat prop beforeNavigate) SEBELUM navigasi benar-benar
   // terjadi, supaya draft pasti selesai tersimpan dulu. Ini menggantikan pendekatan
@@ -300,6 +487,12 @@ export default function Calculator() {
         reviewedAt: activeQuot.purchasing_reviewed_at,
         quotationId: activeQuot.id,
         comparisons: comps || [],
+        // Permintaan revisi dari purchasing. Purchasing tidak bisa menambah
+        // baris item, jadi kalau ada yang tertinggal mereka hanya bisa
+        // meminta estimator memperbaikinya di sini.
+        needsRevision: !!activeQuot.needs_revision,
+        revisionNote: activeQuot.revision_note || '',
+        revisionAt: activeQuot.revision_requested_at,
       }
     }
 
@@ -681,34 +874,151 @@ export default function Calculator() {
 
     // INSERT berhasil — ambil data purchasing dari baris lama sebelum dinonaktifkan
     const { data: oldQuots } = await supabase.from('quotations')
-      .select('id, purchasing_status, purchasing_notes, purchasing_reviewed_at, purchasing_reviewed_by, sent_to_purchasing_at, sent_to_purchasing_by')
+      .select('id, purchasing_status, purchasing_notes, purchasing_reviewed_at, purchasing_reviewed_by, sent_to_purchasing_at, sent_to_purchasing_by, purchasing_projected_at, purchasing_projected_by, needs_revision, revision_note, deal_status, kode_order, deal_price_source, deal_segment_keuangan, material_cost, cetak_cost, emboss_laminasi, material_proses, finishing_wo, additional_cost')
       .eq('request_id', requestId).eq('quantity', activeQty)
       .eq('is_draft', false).eq('is_active', true).neq('id', inserted.id)
       .order('updated_at', { ascending: false }).limit(1)
 
     const oldQuot = oldQuots?.[0]
 
+    // ── Data milik Sales ikut dibawa ke baris baru ────────────────────────
+    //
+    // BUG LAMA: INSERT di atas SELALU menulis deal_status 'quoted', dan tidak
+    // pernah menulis kode_order / deal_price_source / deal_segment_keuangan.
+    // Padahal keempatnya diisi Sales/Manager pada baris LAMA, dan setiap
+    // simpan ulang membuat baris aktif yang BARU.
+    //
+    // Akibatnya setiap kali estimator menyimpan ulang, order yang sudah deal
+    // dan sudah ditagging mendadak kembali terlihat "⚠️ Belum ditagging
+    // Sales" di Antrian Purchasing dan "Belum Diisi" di dashboard Sales --
+    // dan sales harus menagging ulang tanpa tahu kenapa. Sebagian baris
+    // "belum ditagging" yang selama ini dikira kelalaian sales sebenarnya
+    // berasal dari sini.
+    //
+    // Dijalankan SEBELUM blok migrasi purchasing di bawah, selagi
+    // purchasing_status baris baru masih null.
+    if (oldQuot) {
+      const bawaan = {}
+      // 'quoted' adalah nilai awal, bukan keputusan sales -- tidak perlu dibawa.
+      if (oldQuot.deal_status && oldQuot.deal_status !== 'quoted') bawaan.deal_status = oldQuot.deal_status
+      if (oldQuot.kode_order)            bawaan.kode_order            = oldQuot.kode_order
+      if (oldQuot.deal_price_source)     bawaan.deal_price_source     = oldQuot.deal_price_source
+      if (oldQuot.deal_segment_keuangan) bawaan.deal_segment_keuangan = oldQuot.deal_segment_keuangan
+
+      if (Object.keys(bawaan).length > 0) {
+        const { data: bawaOk, error: bawaErr } = await supabase.from('quotations')
+          .update(bawaan).eq('id', inserted.id).select('id')
+        // PostgREST tidak menganggap UPDATE yang ditolak RLS sebagai error --
+        // baris yang kena 0 dan aplikasi mengira berhasil. Jadi dicek manual.
+        if (bawaErr || !bawaOk || bawaOk.length === 0) {
+          console.error('Gagal membawa data Sales ke quotation baru:', bawaErr, bawaan)
+          alert('Perhitungan TERSIMPAN, tapi Status Deal / Kode Order dari versi sebelumnya GAGAL dipindahkan.\n\n'
+            + (bawaErr?.message || 'Tidak ada baris yang berubah — kemungkinan akun Anda belum punya izin.')
+            + '\n\nTolong minta Sales mengisi ulang Kode Order untuk order ini, supaya tidak putus dari data ERP.')
+        }
+      }
+    }
+
     // Kalau baris lama punya data purchasing, migrate ke baris baru
     if (oldQuot?.purchasing_status) {
+      // ── Keputusan purchasing jadi basi begitu perhitungan berubah ──────
+      //
+      // Keputusan Disetujui / Hold / Cancelled diberikan untuk SATU versi
+      // perhitungan. Begitu estimator mengubah angkanya, "Disetujui" itu
+      // mengacu ke angka yang sudah tidak ada lagi. Jadi keputusannya
+      // direset ke 'pending' (Belum Diputuskan) -- TAPI disertai catatan
+      // yang menyebut keputusan apa yang hilang dan kapan, supaya purchasing
+      // tahu ini bukan order baru melainkan order yang pernah mereka
+      // putuskan lalu berubah.
+      //
+      // Yang TIDAK direset: purchasing_projected_at. Harga pembanding yang
+      // sudah diisi tetap terbawa (dicocokkan per nama item, lihat
+      // remapComparisons), jadi order ini bukan "belum diproyeksi" -- cuma
+      // item barunya yang kosong, dan itu ditandai badge "Item Kurang".
+      //
+      // needs_revision sengaja TIDAK ikut dibawa: barisnya baru, nilainya
+      // default false. Permintaan revisi selesai karena diperbaiki, bukan
+      // karena ada yang menekan "tandai selesai".
+      const LABEL_KEPUTUSAN = { approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
+      const keputusanLama = oldQuot.purchasing_status
+      const adaKeputusan  = !!LABEL_KEPUTUSAN[keputusanLama]
+      const waktuReset    = new Date()
+
+      const catatanReset = !adaKeputusan ? null
+        : oldQuot.needs_revision
+          ? `Sebelumnya ${LABEL_KEPUTUSAN[keputusanLama]} karena purchasing minta revisi. `
+            + `Estimator sudah memperbaiki perhitungan pada `
+            + `${waktuReset.toLocaleString('id-ID')} — mohon diperiksa dan diputuskan ulang.`
+          : `Sebelumnya ${LABEL_KEPUTUSAN[keputusanLama]} — direset karena estimator `
+            + `mengubah perhitungan pada ${waktuReset.toLocaleString('id-ID')}. `
+            + `Harga pembanding yang sudah diisi tetap tersimpan.`
+
       await supabase.from('quotations').update({
-        purchasing_status:      oldQuot.purchasing_status,
+        purchasing_status:      adaKeputusan ? 'pending' : oldQuot.purchasing_status,
         purchasing_notes:       oldQuot.purchasing_notes,
         purchasing_reviewed_at: oldQuot.purchasing_reviewed_at,
         purchasing_reviewed_by: oldQuot.purchasing_reviewed_by,
         sent_to_purchasing_at:  oldQuot.sent_to_purchasing_at,
         sent_to_purchasing_by:  oldQuot.sent_to_purchasing_by,
+        purchasing_projected_at: oldQuot.purchasing_projected_at,
+        purchasing_projected_by: oldQuot.purchasing_projected_by,
+        decision_reset_note:    catatanReset,
+        decision_reset_at:      adaKeputusan ? waktuReset.toISOString() : null,
+        decision_reset_from:    adaKeputusan ? keputusanLama : null,
       }).eq('id', inserted.id)
 
-      // Migrate purchasing_comparisons ke quotation baru
+      // Migrate purchasing_comparisons ke quotation baru.
+      //
+      // BUG LAMA: baris purchasing disalin apa adanya, jadi row_index-nya
+      // ikut terbawa. Padahal row_index itu POSISI baris. Begitu estimator
+      // menambah/menghapus satu item di tengah tabel, posisi semua baris di
+      // bawahnya bergeser -- dan harga purchasing nempel ke item yang SALAH
+      // tanpa ada error apa pun. Sekarang setiap baris purchasing dicocokkan
+      // ulang ke item yang sama di quotation baru (lihat remapComparisons).
       const { data: oldComps } = await supabase.from('purchasing_comparisons')
         .select('*').eq('quotation_id', oldQuot.id)
       if (oldComps && oldComps.length > 0) {
-        const newComps = oldComps.map(({ id: _id, quotation_id: _qid, ...rest }) => ({
-          ...rest, quotation_id: inserted.id
-        }))
-        // Hapus comparisons lama dulu, insert yang baru
-        await supabase.from('purchasing_comparisons').delete().eq('quotation_id', oldQuot.id)
-        await supabase.from('purchasing_comparisons').insert(newComps)
+        const { kept, dropped } = remapComparisons(oldComps, oldQuot, {
+          material: matCalc, cetak: cetakCalc, emboss: embCalc,
+          mat_proses: mpCalc, finishing: finCalc, additional: addCalc,
+        }, inserted.id)
+
+        if (dropped.length > 0) {
+          console.warn('[migrasi purchasing] %d baris harga purchasing dibuang karena itemnya sudah tidak ada di perhitungan baru:', dropped.length, dropped)
+        }
+
+        // Pemindahan dijalankan lewat FUNGSI DATABASE, bukan langsung dari
+        // sini. Role estimator cuma punya SELECT di purchasing_comparisons
+        // (policy "sales estimator read"), jadi insert dari aplikasi SELALU
+        // ditolak RLS -- dan sebelum ada pemeriksaan hasil, kegagalan itu
+        // tidak pernah terlihat. Akibatnya harga purchasing tertinggal di
+        // baris quotation yang sudah mati: diukur 14 Okt 2026, 495 baris
+        // nyangkut di 15 quotation mati vs 358 baris di 14 yang aktif.
+        //
+        // Lihat supabase/purchasing_pindah_harga_migration.sql. Fungsi itu
+        // berjalan dengan hak pemilik, menolak dipanggil role lain, hanya mau
+        // memindahkan dalam request+qty yang sama, dan melakukan insert serta
+        // delete dalam SATU transaksi -- jadi tidak bisa berhenti setengah
+        // jalan seperti versi dua langkah sebelumnya.
+        const { data: jumlahPindah, error: compErr } = await supabase.rpc(
+          'migrate_purchasing_comparisons',
+          {
+            p_old_quotation: oldQuot.id,
+            p_new_quotation: inserted.id,
+            // quotation_id tidak ikut dikirim -- tujuannya ditentukan fungsi.
+            p_rows: kept.map(({ quotation_id: _qid, ...r }) => r),
+          }
+        )
+        if (compErr) {
+          console.error('Gagal memindahkan harga purchasing:', compErr)
+          alert('Perhitungan TERSIMPAN, tapi harga pembanding purchasing gagal dipindahkan.\n\n'
+            + compErr.message
+            + '\n\nHarga lama TIDAK hilang — masih menempel di versi perhitungan sebelumnya. '
+            + 'Tolong beri tahu purchasing supaya bisa dicek.')
+        } else if (kept.length > 0 && jumlahPindah === 0) {
+          console.warn('[migrasi purchasing] fungsi mengembalikan 0 baris padahal ada',
+            kept.length, 'baris yang seharusnya pindah')
+        }
       }
     }
 
@@ -799,6 +1109,73 @@ export default function Calculator() {
         </div>
       </div>
 
+      {/* Repeat order: ambil perhitungan order lama, lalu tinggal direview.
+          Ditaruh di atas supaya terlihat SEBELUM estimator mulai mengisi
+          baris satu per satu dari nol. */}
+      <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+        <button onClick={() => setSalinOpen(true)} style={{
+          padding:'8px 16px', borderRadius:8, border:`1px solid ${C.border}`,
+          background:'#fff', fontSize:13, fontWeight:600, color:C.dark, cursor:'pointer',
+        }}>📄 Salin dari Kode Order lama</button>
+        <span style={{ fontSize:11, color:'#9ca3af' }}>
+          Untuk repeat order — isi perhitungan lama disalin, Anda tinggal mengubah yang berbeda.
+        </span>
+        {salinInfo && !salinInfo.bedaVolume && (
+          <span style={{
+            fontSize:11.5, fontWeight:600, color:'#3b6d11', background:'#f0fdf4',
+            border:'1px solid #bbf7d0', borderRadius:20, padding:'3px 10px',
+          }}>
+            ✓ {salinInfo.jumlah} baris disalin dari {salinInfo.kode}
+            {salinInfo.sudahDisesuaikan
+              ? ` — qty sudah disesuaikan ke ${fmt(activeQty)} pcs`
+              : salinInfo.qtyLama
+                ? ` — volume sama (${fmt(activeQty)} pcs), salinan identik`
+                : ''}
+          </span>
+        )}
+      </div>
+
+      {/* Qty hasil salinan masih mengacu ke volume order LAMA. Ini bukan badge
+          kecil tapi peringatan selebar halaman, karena diamkan saja berarti
+          seluruh HPP dihitung untuk volume yang tidak dipesan customer --
+          salah tapi kelihatan wajar. Penyesuaiannya satu tombol, dan hasilnya
+          tetap harus diperiksa karena tidak semua baris qty-nya sebanding
+          dengan volume order (mis. biaya borongan). */}
+      {salinInfo?.bedaVolume && (
+        <div style={{
+          display:'flex', alignItems:'center', gap:12, flexWrap:'wrap',
+          marginBottom:16, padding:'12px 16px', borderRadius:10,
+          background:'#FFFBEB', border:'1px solid #FCD34D',
+        }}>
+          <span style={{ fontSize:15, lineHeight:1.4 }}>⚠️</span>
+          <div style={{ flex:'1 1 320px', fontSize:12.5, color:'#78350F', lineHeight:1.6 }}>
+            <strong>Qty masih ikut order lama.</strong> {salinInfo.jumlah} baris disalin dari{' '}
+            {salinInfo.kode} yang volumenya <strong>{fmt(salinInfo.qtyLama)} pcs</strong>, sedangkan
+            order ini <strong>{fmt(activeQty)} pcs</strong>. Selama belum disesuaikan, harga per pcs
+            dihitung memakai volume yang salah — ongkos insheet terbagi ke jumlah barang yang keliru.
+          </div>
+          <button onClick={sesuaikanQtySalinan} style={{
+            flexShrink:0, padding:'9px 16px', borderRadius:8, border:'none',
+            background:'#B45309', color:'#fff', fontSize:13, fontWeight:600, cursor:'pointer',
+          }}>Sesuaikan qty ke {fmt(activeQty)} pcs</button>
+          <button onClick={() => setSalinInfo(p => p && { ...p, bedaVolume:false })} style={{
+            flexShrink:0, padding:'9px 14px', borderRadius:8, background:'#fff',
+            border:`1px solid ${C.border}`, fontSize:13, color:'#6b7280', cursor:'pointer',
+          }} title="Qty dibiarkan seperti order lama — saya akan mengaturnya sendiri">
+            Biar saya atur sendiri
+          </button>
+        </div>
+      )}
+
+      {salinOpen && (
+        <SalinOrderLama
+          mode="hpp"
+          excludeId={purchasingData?.quotationId}
+          onPick={salinDariOrderLama}
+          onClose={() => setSalinOpen(false)}
+        />
+      )}
+
       {/* Tab selector quantity — cuma muncul kalau request punya lebih dari 1 qty */}
       {qtyList.length > 1 && (
         <div style={{ display:'flex', gap:8, marginBottom:20, flexWrap:'wrap' }}>
@@ -824,73 +1201,35 @@ export default function Calculator() {
         </div>
       )}
 
-      {/* Panel Benchmarking Purchasing — muncul kalau purchasing sudah validasi */}
-      {purchasingData && purchasingData.comparisons.length > 0 && (() => {
-        const C2 = { warn: '#92400e', warnBg: '#fffbeb', warnBorder: '#f59e0b', dangerBg: '#fef2f2', dangerText: '#b91c1c', successText: '#15803d', muted: '#6b7280' }
-        const SECTION_LABEL = { material:'Material', cetak:'Cetak', emboss:'Emboss/Laminasi', mat_proses:'Material Proses', finishing:'Finishing WO', additional:'Additional Cost', vendor_total:'Vendor Total' }
-        // Hanya tampilkan baris yang purchasing_price sudah diisi
-        const filled = purchasingData.comparisons.filter(c => c.purchasing_price != null && c.purchasing_price !== '')
-        // Pisahkan: perlu perhatian (+%) vs aman (-%)
-        const needAttention = filled.filter(c => {
-          if (!c.estimator_price || c.estimator_price === 0) return false
-          return c.purchasing_price > c.estimator_price
-        })
-        const statusColor = purchasingData.status === 'approved' ? '#15803d' : purchasingData.status === 'hold' ? '#b45309' : '#b91c1c'
-        const statusLabel = purchasingData.status === 'approved' ? 'Disetujui' : purchasingData.status === 'hold' ? 'Hold' : 'Cancel'
-        const reviewDate = purchasingData.reviewedAt ? new Date(purchasingData.reviewedAt).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}) : ''
-        return (
-          <div style={{ marginBottom:20, border:`1px solid ${needAttention.length > 0 ? '#f59e0b' : '#86efac'}`, borderRadius:10, overflow:'hidden' }}>
-            <div style={{ background: needAttention.length > 0 ? '#fffbeb' : '#f0fdf4', padding:'10px 16px', display:'flex', alignItems:'center', gap:10, borderBottom:`1px solid ${needAttention.length > 0 ? '#fde68a' : '#bbf7d0'}` }}>
-              <span style={{ fontSize:15 }}>{needAttention.length > 0 ? '⚠️' : '✅'}</span>
-              <span style={{ fontSize:13, fontWeight:600, color: needAttention.length > 0 ? C2.warn : '#15803d' }}>
-                Hasil Validasi Purchasing
-                {needAttention.length > 0 ? ` — ${needAttention.length} item perlu diperhatikan` : ' — Semua harga estimator sudah sesuai'}
-              </span>
-              <span style={{ marginLeft:'auto', fontSize:11, color: statusColor, fontWeight:600, background: purchasingData.status === 'approved' ? '#dcfce7' : purchasingData.status === 'hold' ? '#fef3c7' : '#fee2e2', padding:'2px 10px', borderRadius:20 }}>
-                {statusLabel}
-              </span>
-              {reviewDate && <span style={{ fontSize:11, color: C2.muted }}>{reviewDate}</span>}
-            </div>
-            <div style={{ background:'#fff', overflowX:'auto' }}>
-              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
-                <thead>
-                  <tr style={{ background:'#f9fafb' }}>
-                    {['Section','Item','Harga Estimator','Harga Purchasing','Selisih'].map(h => (
-                      <th key={h} style={{ padding:'7px 12px', textAlign: h.startsWith('Harga')||h==='Selisih' ? 'right' : 'left', fontWeight:500, color: C2.muted, fontSize:11, borderBottom:`1px solid #f3f4f6` }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {filled.map((c, i) => {
-                    const pct = c.estimator_price && c.estimator_price > 0
-                      ? Math.round(((c.purchasing_price - c.estimator_price) / c.estimator_price) * 100)
-                      : null
-                    const isHigh = pct !== null && pct > 0
-                    const idr = v => v != null ? 'Rp ' + Number(v).toLocaleString('id-ID') : '—'
-                    return (
-                      <tr key={i} style={{ background: isHigh ? C2.dangerBg : 'transparent', borderBottom:'1px solid #f3f4f6' }}>
-                        <td style={{ padding:'7px 12px', color: C2.muted, fontSize:11, whiteSpace:'nowrap' }}>{SECTION_LABEL[c.section] || c.section}</td>
-                        <td style={{ padding:'7px 12px', color:'#111827', maxWidth:200 }}>{c.item_name || '—'}</td>
-                        <td style={{ padding:'7px 12px', textAlign:'right', color:'#374151' }}>{idr(c.estimator_price)}</td>
-                        <td style={{ padding:'7px 12px', textAlign:'right', fontWeight: isHigh ? 600 : 400, color: isHigh ? C2.dangerText : '#374151' }}>{idr(c.purchasing_price)}</td>
-                        <td style={{ padding:'7px 12px', textAlign:'right', fontWeight:600, color: isHigh ? C2.dangerText : C2.successText, whiteSpace:'nowrap' }}>
-                          {pct !== null ? (pct > 0 ? `+${pct}%` : `${pct}%`) : '—'}
-                          {isHigh ? ' ⚠' : pct !== null ? ' ✓' : ''}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-              <div style={{ padding:'8px 14px', borderTop:'1px solid #f3f4f6', fontSize:11, color: C2.muted }}>
-                {needAttention.length > 0
-                  ? '⬆ Baris merah = harga estimator lebih rendah dari purchasing. Perlu direvisi di section terkait.'
-                  : '✓ Tidak ada item yang harga estimator lebih rendah dari purchasing.'}
+      {/* Permintaan revisi dari purchasing. SENGAJA di luar panel benchmarking
+          di bawah, karena panel itu hanya tampil kalau sudah ada harga
+          pembanding -- sedangkan permintaan revisi justru paling sering muncul
+          saat harganya belum lengkap. Hilang sendiri setelah estimator
+          menyimpan perhitungan (baris quotation baru, needs_revision false). */}
+      {purchasingData?.needsRevision && (
+        <div style={{ marginBottom:20, border:'1px solid #FCD34D', borderRadius:10, overflow:'hidden' }}>
+          <div style={{ background:'#FFFBEB', padding:'12px 16px', display:'flex', alignItems:'flex-start', gap:10 }}>
+            <span style={{ fontSize:15, lineHeight:1.4 }}>📋</span>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#92400E', marginBottom:4 }}>
+                Purchasing minta revisi
+                {purchasingData.revisionAt && (
+                  <span style={{ fontWeight:400, fontSize:11, color:'#B45309', marginLeft:8 }}>
+                    {new Date(purchasingData.revisionAt).toLocaleString('id-ID')}
+                  </span>
+                )}
+              </div>
+              <div style={{ fontSize:13, color:'#78350F', whiteSpace:'pre-wrap', lineHeight:1.6 }}>
+                {purchasingData.revisionNote || 'Tidak ada catatan rinci dari purchasing.'}
+              </div>
+              <div style={{ fontSize:11, color:'#B45309', marginTop:6 }}>
+                Perbaiki lalu tekan Simpan — tanda ini hilang sendiri setelah perhitungan disimpan ulang.
               </div>
             </div>
           </div>
-        )
-      })()}
+        </div>
+      )}
+
 
       {/* Perbandingan Harga Vendor (opsional, TIDAK menggantikan hitung manual di bawah) */}
       <div style={s.card}>
@@ -1340,6 +1679,80 @@ export default function Calculator() {
             </div>
           </div>
         </div>
+      {/* Panel Benchmarking Purchasing — muncul kalau purchasing sudah validasi.
+          POSISI: sengaja di BAWAH, sesudah semua section biaya dan Ringkasan.
+          Panel ini membandingkan harga estimator vs purchasing, jadi gunanya
+          untuk MEMERIKSA hasil -- bukan bahan saat mulai mengisi. Ditaruh di
+          atas, ia mendorong seluruh form ke bawah pada order yang sudah
+          divalidasi. Permintaan revisi tetap di atas karena itu instruksi yang
+          harus dibaca SEBELUM mulai mengerjakan. */}
+      {purchasingData && purchasingData.comparisons.length > 0 && (() => {
+        const C2 = { warn: '#92400e', warnBg: '#fffbeb', warnBorder: '#f59e0b', dangerBg: '#fef2f2', dangerText: '#b91c1c', successText: '#15803d', muted: '#6b7280' }
+        const SECTION_LABEL = { material:'Material', cetak:'Cetak', emboss:'Emboss/Laminasi', mat_proses:'Material Proses', finishing:'Finishing WO', additional:'Additional Cost', vendor_total:'Vendor Total' }
+        // Hanya tampilkan baris yang purchasing_price sudah diisi
+        const filled = purchasingData.comparisons.filter(c => c.purchasing_price != null && c.purchasing_price !== '')
+        // Pisahkan: perlu perhatian (+%) vs aman (-%)
+        const needAttention = filled.filter(c => {
+          if (!c.estimator_price || c.estimator_price === 0) return false
+          return c.purchasing_price > c.estimator_price
+        })
+        const statusColor = purchasingData.status === 'approved' ? '#15803d' : purchasingData.status === 'hold' ? '#b45309' : '#b91c1c'
+        const statusLabel = purchasingData.status === 'approved' ? 'Disetujui' : purchasingData.status === 'hold' ? 'Hold' : 'Cancel'
+        const reviewDate = purchasingData.reviewedAt ? new Date(purchasingData.reviewedAt).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}) : ''
+        return (
+          <div style={{ marginBottom:20, border:`1px solid ${needAttention.length > 0 ? '#f59e0b' : '#86efac'}`, borderRadius:10, overflow:'hidden' }}>
+            <div style={{ background: needAttention.length > 0 ? '#fffbeb' : '#f0fdf4', padding:'10px 16px', display:'flex', alignItems:'center', gap:10, borderBottom:`1px solid ${needAttention.length > 0 ? '#fde68a' : '#bbf7d0'}` }}>
+              <span style={{ fontSize:15 }}>{needAttention.length > 0 ? '⚠️' : '✅'}</span>
+              <span style={{ fontSize:13, fontWeight:600, color: needAttention.length > 0 ? C2.warn : '#15803d' }}>
+                Hasil Validasi Purchasing
+                {needAttention.length > 0 ? ` — ${needAttention.length} item perlu diperhatikan` : ' — Semua harga estimator sudah sesuai'}
+              </span>
+              <span style={{ marginLeft:'auto', fontSize:11, color: statusColor, fontWeight:600, background: purchasingData.status === 'approved' ? '#dcfce7' : purchasingData.status === 'hold' ? '#fef3c7' : '#fee2e2', padding:'2px 10px', borderRadius:20 }}>
+                {statusLabel}
+              </span>
+              {reviewDate && <span style={{ fontSize:11, color: C2.muted }}>{reviewDate}</span>}
+            </div>
+            <div style={{ background:'#fff', overflowX:'auto' }}>
+              <table style={{ width:'100%', borderCollapse:'collapse', fontSize:12 }}>
+                <thead>
+                  <tr style={{ background:'#f9fafb' }}>
+                    {['Section','Item','Harga Estimator','Harga Purchasing','Selisih'].map(h => (
+                      <th key={h} style={{ padding:'7px 12px', textAlign: h.startsWith('Harga')||h==='Selisih' ? 'right' : 'left', fontWeight:500, color: C2.muted, fontSize:11, borderBottom:`1px solid #f3f4f6` }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {filled.map((c, i) => {
+                    const pct = c.estimator_price && c.estimator_price > 0
+                      ? Math.round(((c.purchasing_price - c.estimator_price) / c.estimator_price) * 100)
+                      : null
+                    const isHigh = pct !== null && pct > 0
+                    const idr = v => v != null ? 'Rp ' + Number(v).toLocaleString('id-ID') : '—'
+                    return (
+                      <tr key={i} style={{ background: isHigh ? C2.dangerBg : 'transparent', borderBottom:'1px solid #f3f4f6' }}>
+                        <td style={{ padding:'7px 12px', color: C2.muted, fontSize:11, whiteSpace:'nowrap' }}>{SECTION_LABEL[c.section] || c.section}</td>
+                        <td style={{ padding:'7px 12px', color:'#111827', maxWidth:200 }}>{c.item_name || '—'}</td>
+                        <td style={{ padding:'7px 12px', textAlign:'right', color:'#374151' }}>{idr(c.estimator_price)}</td>
+                        <td style={{ padding:'7px 12px', textAlign:'right', fontWeight: isHigh ? 600 : 400, color: isHigh ? C2.dangerText : '#374151' }}>{idr(c.purchasing_price)}</td>
+                        <td style={{ padding:'7px 12px', textAlign:'right', fontWeight:600, color: isHigh ? C2.dangerText : C2.successText, whiteSpace:'nowrap' }}>
+                          {pct !== null ? (pct > 0 ? `+${pct}%` : `${pct}%`) : '—'}
+                          {isHigh ? ' ⚠' : pct !== null ? ' ✓' : ''}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+              <div style={{ padding:'8px 14px', borderTop:'1px solid #f3f4f6', fontSize:11, color: C2.muted }}>
+                {needAttention.length > 0
+                  ? '⬆ Baris merah = harga estimator lebih rendah dari purchasing. Perlu direvisi di section terkait.'
+                  : '✓ Tidak ada item yang harga estimator lebih rendah dari purchasing.'}
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
         <div style={{ marginTop:24, display:'flex', gap:12, justifyContent:'flex-end' }}>
           <button onClick={() => navigate(queuePath)} style={{ padding:'10px 20px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:8, fontSize:14, cursor:'pointer', color:C.dark }}>
             Kembali

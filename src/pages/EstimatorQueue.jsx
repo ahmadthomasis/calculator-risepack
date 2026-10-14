@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
 
 const STATUS_LABEL = { pending:'Menunggu', in_progress:'Dikerjakan', done:'Selesai', cancelled:'Dibatalkan' }
@@ -23,11 +24,15 @@ const s = {
 
 export default function EstimatorQueue() {
   const navigate = useNavigate()
+  // Dipakai untuk mencatat siapa yang mengirim ke purchasing.
+  const { profile } = useAuth()
   const [requests, setRequests] = useState([])
   const [filter, setFilter]     = useState('all')
   const [pulse, setPulse]       = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [salesFilter, setSalesFilter] = useState('all')
+  const [dealFilter,  setDealFilter]  = useState('all')
+  const [purchFilter, setPurchFilter] = useState('all')
   const [lastSeen] = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
 
   useEffect(() => {
@@ -58,10 +63,38 @@ export default function EstimatorQueue() {
   async function fetchRequests() {
     const { data } = await supabase
       .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name, price_per_unit, quantity)')
+      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(id, deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, needs_revision, revision_note, revision_requested_at, kode_order, cost_source, vendor_name, price_per_unit, quantity)')
       .order('priority', { ascending: false })
       .order('submitted_at', { ascending: true })
     setRequests(data || [])
+  }
+
+  // Kirim ke Purchasing — sebelumnya hanya ada di ManagerDashboard, jadi
+  // estimator harus menunggu manager walau perhitungannya sudah selesai.
+  //
+  // Mengisi purchasing_status = 'pending' itulah yang membuat order muncul
+  // di Antrian Purchasing: halaman itu menyaring purchasing_status is not
+  // null. sent_to_purchasing_by diisi supaya kelihatan siapa yang mengirim.
+  async function kirimKePurchasing(quotationId) {
+    const { data, error } = await supabase.from('quotations').update({
+      purchasing_status:     'pending',
+      sent_to_purchasing_at: new Date().toISOString(),
+      sent_to_purchasing_by: profile?.id || null,
+    }).eq('id', quotationId).select('id')
+
+    if (error) {
+      console.error('Gagal kirim ke purchasing:', error)
+      alert('Gagal mengirim ke Purchasing: ' + error.message)
+      return
+    }
+    // PostgREST tidak menganggap UPDATE yang ditolak RLS sebagai error --
+    // baris yang kena 0 tanpa pesan apa pun. Tanpa cek ini, tombolnya akan
+    // kelihatan berhasil padahal tidak menyimpan apa-apa.
+    if (!data || data.length === 0) {
+      alert('TIDAK terkirim — tidak ada baris yang berubah.\n\nKemungkinan akun Anda belum punya izin mengubah quotation ini, atau order ini sudah pernah dikirim.')
+      return
+    }
+    fetchRequests()
   }
 
   async function startRequest(id) {
@@ -82,11 +115,57 @@ export default function EstimatorQueue() {
 
   const salesList = [...new Set(requests.map(r => r.profiles?.full_name).filter(Boolean))].sort()
 
-  const filtered = (filter === 'all' ? requests : requests.filter(r => r.status === filter))
-    .filter(r => !searchTerm.trim() || (r.customer_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase()))
+  // Quotation aktif milik satu request -- pola yang sudah dipakai di tabel.
+  const activeQuot = r => (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
+
+  const mintaRevisi = r => !!activeQuot(r)?.needs_revision
+
+  const filtered = (filter === 'all' ? requests
+    : filter === 'minta_revisi' ? requests.filter(mintaRevisi)
+    : requests.filter(r => r.status === filter))
+    .filter(r => {
+      // Pencarian ikut menjangkau Kode Order, no. request, dan nama produk --
+      // bukan cuma nama customer. Kode Order-nya ada di quotation aktif.
+      const s = searchTerm.trim().toLowerCase()
+      if (!s) return true
+      const q = activeQuot(r)
+      return (r.customer_name || '').toLowerCase().includes(s)
+        || (r.request_number || '').toLowerCase().includes(s)
+        || (r.product_type || '').toLowerCase().includes(s)
+        || (q?.kode_order || '').toLowerCase().includes(s)
+    })
     .filter(r => salesFilter === 'all' || r.profiles?.full_name === salesFilter)
-  const counts   = { all: requests.length, pending: 0, in_progress: 0, done: 0 }
-  requests.forEach(r => { if (counts[r.status] !== undefined) counts[r.status]++ })
+    .filter(r => {
+      if (dealFilter === 'all') return true
+      const q = activeQuot(r)
+      // 'none' = belum ada quotation aktif atau status deal-nya masih kosong.
+      if (dealFilter === 'none') return !q?.deal_status
+      return q?.deal_status === dealFilter
+    })
+    .filter(r => {
+      if (purchFilter === 'all') return true
+      const q = activeQuot(r)
+      // 'none' = belum pernah dikirim ke purchasing sama sekali.
+      if (purchFilter === 'none') return !q?.purchasing_status
+      return q?.purchasing_status === purchFilter
+    })
+  const counts   = { all: requests.length, pending: 0, in_progress: 0, done: 0, minta_revisi: 0 }
+  requests.forEach(r => {
+    if (counts[r.status] !== undefined) counts[r.status]++
+    if (mintaRevisi(r)) counts.minta_revisi++
+  })
+
+  // Hitungan di dalam kurung pada kedua dropdown, dihitung dari SELURUH data
+  // supaya angkanya menunjukkan beban sebenarnya, bukan sisa filter lain.
+  const dealCounts  = { all: requests.length, deal:0, followup:0, no_deal:0, quoted:0, none:0 }
+  const purchCounts = { all: requests.length, pending:0, approved:0, hold:0, cancelled:0, none:0 }
+  requests.forEach(r => {
+    const q = activeQuot(r)
+    const d = q?.deal_status || 'none'
+    if (dealCounts[d] !== undefined) dealCounts[d]++
+    const p = q?.purchasing_status || 'none'
+    if (purchCounts[p] !== undefined) purchCounts[p]++
+  })
 
   function elapsed(submitted) {
     const mins = Math.floor((Date.now() - new Date(submitted)) / 60000)
@@ -117,19 +196,72 @@ export default function EstimatorQueue() {
         <span style={{ fontSize:12, color:'#6b7280' }}>Live — update otomatis saat request masuk</span>
       </div>
 
+      {/* Strip pekerjaan mendesak. Pil filter saja tidak cukup: pil ada di
+          deretan filter status biasa dan mudah terlewat. Hanya muncul kalau
+          angkanya > 0, jadi tidak jadi hiasan tetap. */}
+      {counts.minta_revisi > 0 && (
+        <button onClick={() => setFilter('minta_revisi')} style={{
+          display:'flex', width:'100%', boxSizing:'border-box', textAlign:'left',
+          cursor:'pointer', alignItems:'center', gap:10, marginBottom:16,
+          padding:'11px 14px', borderRadius:10,
+          background:'#EFF6FF', border:'1px solid #93C5FD',
+        }}>
+          <span style={{ fontSize:16 }}>📋</span>
+          <span style={{ fontSize:13, color:'#1D4ED8', fontWeight:600 }}>
+            {counts.minta_revisi} perhitungan diminta revisi purchasing
+          </span>
+          <span style={{ marginLeft:'auto', fontSize:11, color:'#1D4ED8', opacity:0.75 }}>lihat →</span>
+        </button>
+      )}
+
       {/* Filter tabs + search */}
       <div style={{ display:'flex', gap:8, marginBottom:20, alignItems:'center', flexWrap:'wrap', justifyContent:'space-between' }}>
         <div style={{ display:'flex', gap:8 }}>
-          {[['all','Semua'],['pending','Menunggu'],['in_progress','Dikerjakan'],['done','Selesai']].map(([val,label]) => (
-            <button key={val} onClick={() => setFilter(val)} style={{
-              padding:'6px 16px', borderRadius:20, fontSize:13, cursor:'pointer', fontWeight:500,
-              background: filter===val ? '#2563eb' : '#fff',
-              color: filter===val ? '#fff' : '#6b7280',
-              border: filter===val ? '1px solid #2563eb' : '1px solid #e5e7eb'
-            }}>{label} <span style={{ opacity:0.7 }}>({counts[val] ?? 0})</span></button>
-          ))}
+          {[['all','Semua'],['pending','Menunggu'],['in_progress','Dikerjakan'],['done','Selesai'],['minta_revisi','📋 Diminta Revisi']].map(([val,label]) => {
+            // Pil "Item Kurang" dibedakan warnanya (ungu) supaya tidak hilang
+            // di antara filter status biasa -- ini pekerjaan yang mendesak.
+            // Pil "Diminta Revisi" dibedakan warnanya supaya tidak hilang di
+            // antara filter status biasa, dan disembunyikan kalau angkanya 0.
+            const urgent = val === 'minta_revisi'
+            const aktif  = filter === val
+            const warna  = urgent ? '#1D4ED8' : '#2563eb'
+            if (urgent && (counts[val] ?? 0) === 0 && !aktif) return null
+            const judul  = urgent ? 'Purchasing minta estimator memperbaiki/menambah item' : undefined
+            return (
+              <button key={val} onClick={() => setFilter(val)} title={judul} style={{
+                padding:'6px 16px', borderRadius:20, fontSize:13, cursor:'pointer', fontWeight:500,
+                background: aktif ? warna : '#fff',
+                color: aktif ? '#fff' : (urgent ? warna : '#6b7280'),
+                border: aktif ? `1px solid ${warna}` : `1px solid ${urgent ? warna+'66' : '#e5e7eb'}`
+              }}>{label} <span style={{ opacity:0.7 }}>({counts[val] ?? 0})</span></button>
+            )
+          })}
         </div>
-        <div style={{ display:'flex', gap:8 }}>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          <select
+            value={dealFilter}
+            onChange={e => setDealFilter(e.target.value)}
+            style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, outline:'none', background:'#fff', color: dealFilter === 'all' ? '#6b7280' : '#1d4ed8', fontWeight: dealFilter === 'all' ? 400 : 600, cursor:'pointer' }}
+          >
+            <option value="all">Semua Status Deal ({dealCounts.all})</option>
+            <option value="deal">Deal ({dealCounts.deal})</option>
+            <option value="followup">Followup ({dealCounts.followup})</option>
+            <option value="no_deal">No Deal ({dealCounts.no_deal})</option>
+            <option value="quoted">Belum Diisi ({dealCounts.quoted})</option>
+            <option value="none">Belum ada quotation ({dealCounts.none})</option>
+          </select>
+          <select
+            value={purchFilter}
+            onChange={e => setPurchFilter(e.target.value)}
+            style={{ padding:'8px 12px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, outline:'none', background:'#fff', color: purchFilter === 'all' ? '#6b7280' : '#1d4ed8', fontWeight: purchFilter === 'all' ? 400 : 600, cursor:'pointer' }}
+          >
+            <option value="all">Semua Status Purchasing ({purchCounts.all})</option>
+            <option value="none">Belum dikirim ({purchCounts.none})</option>
+            <option value="pending">Menunggu ({purchCounts.pending})</option>
+            <option value="approved">Disetujui ({purchCounts.approved})</option>
+            <option value="hold">Hold ({purchCounts.hold})</option>
+            <option value="cancelled">Cancelled ({purchCounts.cancelled})</option>
+          </select>
           <select
             value={salesFilter}
             onChange={e => setSalesFilter(e.target.value)}
@@ -142,7 +274,7 @@ export default function EstimatorQueue() {
           </select>
           <input
             type="text"
-            placeholder="Cari nama customer..."
+            placeholder="Cari Kode Order, customer, no. request, produk..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, width:220, outline:'none' }}
@@ -273,12 +405,22 @@ export default function EstimatorQueue() {
                       )
                     })()}
                     {(() => {
-                      // Badge "📋 Revisi Purchasing": muncul kalau purchasing_notes ada
-                      // (needs_revision & revision_note kolom akan ditambah setelah SQL dijalankan)
+                      // Badge "📋 Revisi Purchasing".
+                      //
+                      // DULU badge ini cuma melihat purchasing_notes terisi atau
+                      // tidak. Itu keliru: purchasing_notes adalah catatan biasa
+                      // yang ikut tersimpan SETIAP kali purchasing menekan Save
+                      // Proyeksi -- jadi badge-nya menyala terus walau tidak ada
+                      // yang perlu direvisi, dan tidak pernah bisa dimatikan.
+                      //
+                      // Sekarang pakai penanda eksplisit needs_revision, yang
+                      // hanya menyala kalau purchasing memang menekan "Minta
+                      // Revisi ke Estimator", dan padam sendiri begitu estimator
+                      // menyimpan ulang (baris quotation baru default false).
                       const q = (r.quotations || []).find(qt => !qt.is_draft && qt.is_active)
-                      if (!q?.purchasing_notes) return null
+                      if (!q?.needs_revision) return null
                       return (
-                        <span title={q.purchasing_notes} style={{
+                        <span title={q.revision_note || 'Purchasing meminta perbaikan pada perhitungan ini'} style={{
                           padding:'2px 8px', borderRadius:12, fontSize:10, fontWeight:600,
                           background:'#EFF6FF', color:'#1D4ED8', border:'1px solid #93C5FD',
                           cursor:'help', animation:'pulseDotEst 1.4s ease-in-out infinite',
@@ -304,6 +446,20 @@ export default function EstimatorQueue() {
                       </div>
                     )
                   })()}
+                  {/* Kode Order ditaruh di bawah Status Deal, bukan jadi kolom
+                      sendiri: tabel ini sudah 12 kolom. Keduanya memang satu
+                      paket -- Kode Order diisi Sales bersamaan saat menandai
+                      Deal, jadi dibaca bersebelahan. */}
+                  {(() => {
+                    const q = activeQuot(r)
+                    if (!q?.kode_order) return null
+                    return (
+                      <div style={{ fontFamily:'monospace', fontSize:11, color:'#6b7280', marginTop:3 }}
+                           title="Kode Order dari ERP, diisi Sales saat menandai Deal">
+                        📦 {q.kode_order}
+                      </div>
+                    )
+                  })()}
                 </td>
                 <td style={s.td}>
                   {(() => {
@@ -325,6 +481,12 @@ export default function EstimatorQueue() {
                     if (!q || !q.purchasing_status) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     const labels = { pending:'Menunggu', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
                     const colors = { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }
+                    // Penanda "item kurang" SENGAJA tidak ada di sini.
+                    // Mengisi harga item adalah pekerjaan purchasing, dan
+                    // estimator tidak bisa berbuat apa-apa soal itu -- jadi
+                    // alarmnya hanya dipasang di Antrian Purchasing. Yang
+                    // relevan untuk estimator adalah permintaan revisi, dan
+                    // itu sudah punya badge sendiri di kolom Status.
                     return <span style={s.badge(colors[q.purchasing_status])} title={q.purchasing_notes || ''}>{labels[q.purchasing_status]}</span>
                   })()}
                 </td>
@@ -341,6 +503,24 @@ export default function EstimatorQueue() {
                     {r.status === 'done' && (
                       <button style={s.btnGray} onClick={() => navigate(`/calculator/${r.id}`)}>Lihat</button>
                     )}
+                    {(() => {
+                      // Tombol kirim hanya untuk perhitungan yang SUDAH final
+                      // dan BELUM pernah dikirim. Kalau sudah dikirim,
+                      // statusnya yang ditampilkan (kolom Purchasing).
+                      const q = activeQuot(r)
+                      if (!q || q.purchasing_status) return null
+                      if (r.status !== 'done') return null
+                      return (
+                        <button
+                          onClick={() => kirimKePurchasing(q.id)}
+                          title="Kirim perhitungan ini ke Purchasing untuk dibuatkan COGS Proyeksi"
+                          style={{
+                            padding:'7px 16px', background:'#fff', border:'1px solid #2563eb',
+                            color:'#2563eb', borderRadius:7, fontSize:13, fontWeight:500, cursor:'pointer',
+                          }}
+                        >Kirim ke Purchasing</button>
+                      )
+                    })()}
                   </div>
                 </td>
               </tr>

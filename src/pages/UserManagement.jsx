@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import Layout from '../components/Layout'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 
 const C = { dark:'#2C1810', orange:'#E8760A', brown:'#5C3D2E', cream:'#FDF6EC', border:'#E8D5BC' }
 
@@ -20,7 +21,12 @@ const roleLabel = { sales:'Sales', estimator:'Estimator', manager:'Manager', pur
 const FUNCTIONS_URL = 'https://ycwacahngbletmqafwac.supabase.co/functions/v1'
 
 export default function UserManagement() {
+  // Dipakai mencatat siapa yang menetapkan pegangan innersales.
+  const { profile } = useAuth()
   const [users, setUsers] = useState([])
+  // Pemetaan innersales -> daftar sales pegangannya.
+  // Bentuk: { [innersales_id]: [sales_id, ...] }
+  const [pegangan, setPegangan] = useState({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [toast, setToast] = useState(null)
@@ -64,6 +70,17 @@ export default function UserManagement() {
       // Edge Function 'manage-user' tidak tahu kolom baru ini, jadi diambil terpisah.
       const { data: profs } = await supabase.from('profiles').select('id, is_innersales, default_layouter_id')
       const profMap = Object.fromEntries((profs || []).map(p => [p.id, p]))
+
+      // Pegangan innersales (tabel innersales_sales). Lihat
+      // supabase/innersales_pegangan_migration.sql -- tabelnya banyak-ke-banyak
+      // karena satu sales boleh dipegang lebih dari satu innersales.
+      const { data: maps } = await supabase.from('innersales_sales').select('innersales_id, sales_id')
+      const petaBaru = {}
+      ;(maps || []).forEach(m => {
+        if (!petaBaru[m.innersales_id]) petaBaru[m.innersales_id] = []
+        petaBaru[m.innersales_id].push(m.sales_id)
+      })
+      setPegangan(petaBaru)
       setUsers((data.users || []).map(u => ({
         ...u,
         is_innersales: profMap[u.id]?.is_innersales || false,
@@ -103,6 +120,32 @@ export default function UserManagement() {
     }
     setUsers(prev => prev.map(u => u.id === userId ? { ...u, ...patch } : u))
     showToast('success', 'Pengaturan innersales diperbarui')
+  }
+
+  // Tambah / hapus sales pegangan seorang innersales. Ditulis langsung ke
+  // tabel innersales_sales; policy "innersales_sales: manager write" membatasi
+  // ini hanya untuk manager, jadi akun lain akan kena 0 baris.
+  const tambahPegangan = async (innerId, salesId) => {
+    if (!salesId) return
+    const { error } = await supabase.from('innersales_sales')
+      .insert({ innersales_id: innerId, sales_id: salesId, created_by: profile?.id || null })
+    if (error) {
+      showToast('error', `Gagal menambah pegangan: ${error.message}`)
+      return
+    }
+    setPegangan(p => ({ ...p, [innerId]: [...(p[innerId] || []), salesId] }))
+    showToast('success', 'Pegangan sales ditambahkan')
+  }
+
+  const hapusPegangan = async (innerId, salesId) => {
+    const { error } = await supabase.from('innersales_sales')
+      .delete().eq('innersales_id', innerId).eq('sales_id', salesId)
+    if (error) {
+      showToast('error', `Gagal menghapus pegangan: ${error.message}`)
+      return
+    }
+    setPegangan(p => ({ ...p, [innerId]: (p[innerId] || []).filter(id => id !== salesId) }))
+    showToast('success', 'Pegangan sales dilepas')
   }
 
   const handleRoleChange = async (userId, newRole) => {
@@ -264,7 +307,7 @@ export default function UserManagement() {
                   <th style={s.th}>Nama</th>
                   <th style={s.th}>Email</th>
                   <th style={s.th}>Role</th>
-                  <th style={s.th}>Innersales → Layouter</th>
+                  <th style={s.th}>Innersales → Layouter &amp; Sales</th>
                   <th style={s.th}>Status</th>
                   <th style={{ ...s.th, textAlign:'right' }}>Aksi</th>
                 </tr>
@@ -273,6 +316,9 @@ export default function UserManagement() {
                 {users.map(u => {
                   const isEditing = editingId === u.id
                   const layouters = users.filter(x => x.role === 'prodev' && !x.banned)
+                  // Kandidat pegangan: akun sales aktif selain dirinya sendiri.
+                  const kandidatSales = users.filter(x => x.role === 'sales' && !x.banned && x.id !== u.id)
+                  const dipegang = pegangan[u.id] || []
                   return (
                   <tr key={u.id}>
                     <td style={s.td}>
@@ -303,23 +349,62 @@ export default function UserManagement() {
                     </td>
                     <td style={s.td}>
                       {u.role === 'sales' ? (
-                        <div style={{ display:'flex', alignItems:'center', gap:8 }}>
-                          <input type="checkbox" checked={!!u.is_innersales} title="Tandai sebagai innersales (bisa buat FPS/FSA)"
-                            onChange={e => updateProdevFields(u.id, {
-                              is_innersales: e.target.checked,
-                              // Kalau flag dimatikan, pemetaan layouter ikut dikosongkan
-                              ...(e.target.checked ? {} : { default_layouter_id: null }),
-                            })}
-                            style={{ width:15, height:15, cursor:'pointer' }} />
+                        <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                          <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                            <input type="checkbox" checked={!!u.is_innersales} title="Tandai sebagai innersales (bisa buat FPS/FSA)"
+                              onChange={e => updateProdevFields(u.id, {
+                                is_innersales: e.target.checked,
+                                // Kalau flag dimatikan, pemetaan layouter ikut dikosongkan
+                                ...(e.target.checked ? {} : { default_layouter_id: null }),
+                              })}
+                              style={{ width:15, height:15, cursor:'pointer' }} />
+                            {u.is_innersales && (
+                              <select
+                                style={{ ...s.select, width:'auto', padding:'5px 8px', fontSize:12 }}
+                                value={u.default_layouter_id || ''}
+                                onChange={e => updateProdevFields(u.id, { default_layouter_id: e.target.value || null })}
+                              >
+                                <option value="">— pilih layouter —</option>
+                                {layouters.map(l => <option key={l.id} value={l.id}>{l.full_name}</option>)}
+                              </select>
+                            )}
+                          </div>
+
+                          {/* Sales pegangan innersales ini. Menentukan order siapa
+                              yang boleh dia lihat dan ubah status deal-nya -- dijaga
+                              policy RLS, bukan cuma tampilan. Lihat
+                              supabase/innersales_pegangan_migration.sql. */}
                           {u.is_innersales && (
-                            <select
-                              style={{ ...s.select, width:'auto', padding:'5px 8px', fontSize:12 }}
-                              value={u.default_layouter_id || ''}
-                              onChange={e => updateProdevFields(u.id, { default_layouter_id: e.target.value || null })}
-                            >
-                              <option value="">— pilih layouter —</option>
-                              {layouters.map(l => <option key={l.id} value={l.id}>{l.full_name}</option>)}
-                            </select>
+                            <div style={{ display:'flex', flexWrap:'wrap', alignItems:'center', gap:5 }}>
+                              <span style={{ fontSize:10.5, color:'#9ca3af', marginRight:2 }}>Pegang:</span>
+                              {dipegang.length === 0 && (
+                                <span style={{ fontSize:11, color:'#d97706' }} title="Tanpa pegangan, innersales ini hanya melihat ordernya sendiri">belum ada</span>
+                              )}
+                              {dipegang.map(sid => {
+                                const sales = users.find(x => x.id === sid)
+                                return (
+                                  <span key={sid} style={{
+                                    display:'inline-flex', alignItems:'center', gap:4, padding:'2px 6px 2px 8px',
+                                    borderRadius:12, fontSize:11, fontWeight:600,
+                                    background:'#eff6ff', color:'#1d4ed8', border:'1px solid #bfdbfe',
+                                  }}>
+                                    {sales?.full_name || 'akun terhapus'}
+                                    <button onClick={() => hapusPegangan(u.id, sid)} title="Lepas pegangan ini"
+                                      style={{ border:'none', background:'transparent', cursor:'pointer', color:'#1d4ed8', fontSize:12, lineHeight:1, padding:0 }}>×</button>
+                                  </span>
+                                )
+                              })}
+                              <select
+                                value=""
+                                onChange={e => { tambahPegangan(u.id, e.target.value); e.target.value = '' }}
+                                style={{ ...s.select, width:'auto', padding:'3px 6px', fontSize:11 }}
+                              >
+                                <option value="">+ tambah sales</option>
+                                {kandidatSales
+                                  .filter(x => !dipegang.includes(x.id))
+                                  .map(x => <option key={x.id} value={x.id}>{x.full_name}</option>)}
+                              </select>
+                            </div>
                           )}
                         </div>
                       ) : (

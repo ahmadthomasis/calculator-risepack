@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import { fetchPricedKeys, missingItems } from '../lib/itemKurang'
 
 const PSTATUS_LABEL = { pending:'Belum Diputuskan', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
 const PSTATUS_COLOR = { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }
@@ -33,6 +34,10 @@ export default function PurchasingQueue() {
   const [projFilter, setProjFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [pulse, setPulse] = useState(false)
+  // Kunci `${quotation_id}|${section}|${row_index}` yang sudah punya harga
+  // purchasing. null = belum/gagal dimuat, badge "Item Kurang" ditahan dulu
+  // supaya tidak ada alarm palsu.
+  const [pricedKeys, setPricedKeys] = useState(null)
 
   useEffect(() => {
     fetchQuotations()
@@ -54,8 +59,21 @@ export default function PurchasingQueue() {
       .select('*, requests(request_number, customer_name, product_type)')
       .not('purchasing_status', 'is', null)
       .eq('is_draft', false)
+      // WAJIB. Tanpa ini, setiap kali estimator menyimpan ulang, baris
+      // quotation LAMA (yang sudah is_active=false) tetap ikut tampil di
+      // samping baris barunya -- jadi satu order kelihatan dua kali, dan
+      // yang lama masih memajang status sebelum direset. ManagerDashboard
+      // dan Dashboard Pantau sudah menyaring ini sejak awal; halaman ini
+      // yang terlewat.
+      .eq('is_active', true)
       .order('sent_to_purchasing_at', { ascending: false })
     setQuotations(data || [])
+
+    // Baris mana saja yang sudah dihargai purchasing. Dipakai untuk badge
+    // "Item Kurang": estimator menambah item SETELAH purchasing selesai
+    // memproyeksikan, jadi ada baris yang tidak ada yang mengisi harganya.
+    const projected = (data || []).filter(q => q.purchasing_projected_at).map(q => q.id)
+    setPricedKeys(await fetchPricedKeys(supabase, projected))
   }
 
   // Tiga filter bertingkat: Proyeksi -> Status Purchasing -> Status Deal.
@@ -63,6 +81,7 @@ export default function PurchasingQueue() {
   // selalu menjawab "dari yang sedang tampil, berapa yang ...".
   const byProj = projFilter === 'all' ? quotations
     : projFilter === 'sudah' ? quotations.filter(q => q.purchasing_projected_at)
+    : projFilter === 'kurang' ? quotations.filter(q => missingItems(q, pricedKeys).count > 0)
     : quotations.filter(q => !q.purchasing_projected_at)
 
   const byPStatus = filter === 'all' ? byProj : byProj.filter(q => q.purchasing_status === filter)
@@ -104,11 +123,20 @@ export default function PurchasingQueue() {
         (q.requests?.product_type || '').toLowerCase().includes(s)
       )
     })
+  // Peta id quotation -> { count, names } item yang belum dihargai purchasing.
+  // Dihitung sekali untuk dipakai kartu, filter, dan badge di tabel.
+  const kurangMap = {}
+  quotations.forEach(q => {
+    const m = missingItems(q, pricedKeys)
+    if (m.count > 0) kurangMap[q.id] = m
+  })
+
   // Hitungan kartu: selalu dari SELURUH data, bukan dari hasil filter.
   const kartu = {
     dealBelum: quotations.filter(q => !q.purchasing_projected_at && q.deal_status === 'deal').length,
     belum:     quotations.filter(q => !q.purchasing_projected_at).length,
     menunggu:  quotations.filter(q => q.purchasing_projected_at && (q.purchasing_status || 'pending') === 'pending').length,
+    kurang:    Object.keys(kurangMap).length,
   }
 
   const projCounts = { all: quotations.length, sudah: 0, belum: 0 }
@@ -150,6 +178,11 @@ export default function PurchasingQueue() {
             set:() => { setProjFilter('belum'); setDealFilter('all'); setFilter('all') } },
           { key:'menunggu', ikon:'⏳', warna:'#185FA5', jumlah:kartu.menunggu, label:'Menunggu validasi',
             set:() => { setProjFilter('sudah'); setDealFilter('all'); setFilter('pending') } },
+          // Estimator menambah item setelah purchasing selesai memproyeksikan.
+          // Barisnya ada, harganya belum ada yang mengisi -- harus dikerjakan
+          // secepatnya, jadi ikut jadi kartu supaya langsung kelihatan.
+          { key:'kurang', ikon:'➕', warna:'#7C3AED', jumlah:kartu.kurang, label:'Ada item kurang',
+            set:() => { setProjFilter('kurang'); setDealFilter('all'); setFilter('all') } },
         ].map(k => (
           <button key={k.key} onClick={k.set} title="Klik untuk memasang filter ini" style={{
             flex:'1 1 200px', minWidth:200, textAlign:'left', cursor:'pointer',
@@ -175,6 +208,7 @@ export default function PurchasingQueue() {
           <option value="all">Semua Proyeksi ({projCounts.all})</option>
           <option value="belum">Belum Diproyeksi ({projCounts.belum})</option>
           <option value="sudah">Sudah Diproyeksi ({projCounts.sudah})</option>
+          <option value="kurang">Ada Item Kurang ({kartu.kurang})</option>
         </select>
         <select value={filter} onChange={e => setFilter(e.target.value)} style={s.select}>
           <option value="all">Semua Status Purchasing ({counts.all})</option>
@@ -249,6 +283,17 @@ export default function PurchasingQueue() {
                   {q.purchasing_projected_at
                     ? <span style={s.badge('#3B6D11')} title={`Diproyeksikan ${new Date(q.purchasing_projected_at).toLocaleString('id-ID')}`}>✓ Sudah</span>
                     : <span style={s.badge('#854F0B')} title="Purchasing belum menyimpan proyeksi biaya untuk order ini">Belum</span>}
+                  {/* Estimator menambah item setelah proyeksi selesai. Baris
+                      itu belum ada harga purchasing-nya, jadi ditandai supaya
+                      langsung dikerjakan, bukan ketinggalan diam-diam. */}
+                  {kurangMap[q.id] && (
+                    <div style={{ marginTop:4 }}>
+                      <span
+                        style={{ ...s.badge('#7C3AED'), cursor:'help' }}
+                        title={`Item yang belum ada harga purchasing (${kurangMap[q.id].count}):\n- ${kurangMap[q.id].names.join('\n- ')}`}
+                      >➕ {kurangMap[q.id].count} item kurang</span>
+                    </div>
+                  )}
                 </td>
                 <td style={s.td}>
                   <select
@@ -266,7 +311,19 @@ export default function PurchasingQueue() {
                     <option value="cancelled">Cancel ❌</option>
                   </select>
                 </td>
-                <td style={s.td}><span style={s.badge(DEAL_COLOR[q.deal_status] || '#9ca3af')}>{DEAL_LABEL[q.deal_status] || 'Belum diisi'}</span></td>
+                <td style={s.td}>
+                  <span style={s.badge(DEAL_COLOR[q.deal_status] || '#9ca3af')}>{DEAL_LABEL[q.deal_status] || 'Belum diisi'}</span>
+                  {/* Keputusan sebelumnya dicabut karena estimator mengubah
+                      perhitungan. Ditandai supaya purchasing tahu ini bukan
+                      order baru, melainkan order yang pernah mereka putuskan. */}
+                  {q.decision_reset_note && (
+                    <div style={{ marginTop:4 }}>
+                      <span style={{ ...s.badge('#B45309'), cursor:'help' }} title={q.decision_reset_note}>
+                        ↻ Keputusan direset
+                      </span>
+                    </div>
+                  )}
+                </td>
                 <td style={s.td}><div style={{ fontSize:12, color:'#9ca3af' }}>{elapsed(q.sent_to_purchasing_at)}</div></td>
                 <td style={s.td}>
                   <button style={s.btnPrimary} onClick={() => navigate(`/purchasing/${q.id}`)}>
