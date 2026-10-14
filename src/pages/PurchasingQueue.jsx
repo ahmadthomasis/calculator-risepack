@@ -1,10 +1,17 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
 
-const PSTATUS_LABEL = { pending:'Menunggu Validasi', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
+const PSTATUS_LABEL = { pending:'Belum Diputuskan', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
 const PSTATUS_COLOR = { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }
+
+// Status deal dari Sales (quotations.deal_status). Nilai yang ada di database:
+// deal / followup / no_deal / quoted. Dipakai purchasing untuk tahu mana
+// pekerjaan prioritas (sudah Deal) dan mana yang sekadar minta validasi.
+const DEAL_LABEL = { deal:'Deal', followup:'Follow Up', no_deal:'Tidak Deal', quoted:'Quoted' }
+const DEAL_COLOR = { deal:'#3B6D11', followup:'#854F0B', no_deal:'#A32D2D', quoted:'#5f5e5a' }
 
 const s = {
   card: { background:'#fff', borderRadius:12, padding:24, boxShadow:'0 1px 4px rgba(0,0,0,0.06)', marginBottom:24 },
@@ -14,12 +21,16 @@ const s = {
   badge: (c) => ({ display:'inline-block', padding:'3px 10px', borderRadius:20, fontSize:12, fontWeight:500, background:c+'18', color:c }),
   btnPrimary: { padding:'7px 16px', background:'#2563eb', color:'#fff', border:'none', borderRadius:7, fontSize:13, cursor:'pointer', fontWeight:500 },
   metricCard: { background:'#f9fafb', borderRadius:10, padding:16, flex:1 },
+  select: { padding:'7px 12px', borderRadius:8, border:'1px solid #e5e7eb', background:'#fff', fontSize:13, color:'#374151', cursor:'pointer', fontWeight:500, minWidth:175 },
 }
 
 export default function PurchasingQueue() {
   const navigate = useNavigate()
+  const { profile } = useAuth()
   const [quotations, setQuotations] = useState([])
-  const [filter, setFilter] = useState('pending')
+  const [filter, setFilter] = useState('all')
+  const [dealFilter, setDealFilter] = useState('all')
+  const [projFilter, setProjFilter] = useState('all')
   const [searchTerm, setSearchTerm] = useState('')
   const [pulse, setPulse] = useState(false)
 
@@ -47,7 +58,41 @@ export default function PurchasingQueue() {
     setQuotations(data || [])
   }
 
-  const filtered = (filter === 'all' ? quotations : quotations.filter(q => q.purchasing_status === filter))
+  // Tiga filter bertingkat: Proyeksi -> Status Purchasing -> Status Deal.
+  // Hitungan pada tiap baris pil mengikuti filter DI ATASNYA, jadi angkanya
+  // selalu menjawab "dari yang sedang tampil, berapa yang ...".
+  const byProj = projFilter === 'all' ? quotations
+    : projFilter === 'sudah' ? quotations.filter(q => q.purchasing_projected_at)
+    : quotations.filter(q => !q.purchasing_projected_at)
+
+  const byPStatus = filter === 'all' ? byProj : byProj.filter(q => q.purchasing_status === filter)
+
+  // Ubah keputusan langsung dari antrean -- menggantikan tiga tombol besar
+  // yang dulu ada di halaman validasi. Mengikuti pola updateDealStatus() di
+  // SalesDashboard: update, cek, lalu refetch.
+  async function updatePurchasingStatus(quotationId, newStatus) {
+    const { data, error } = await supabase.from('quotations')
+      .update({
+        purchasing_status: newStatus,
+        purchasing_reviewed_at: new Date().toISOString(),
+        purchasing_reviewed_by: profile?.id || null,
+      })
+      .eq('id', quotationId)
+      .select('id')
+    if (error) { alert('Gagal mengubah status: ' + error.message); return }
+    if (!data || data.length === 0) {
+      alert('Status TIDAK tersimpan — tidak ada baris yang berubah. Kemungkinan akun Anda belum punya izin mengubah quotation ini.')
+      return
+    }
+    fetchQuotations()
+  }
+
+  const filtered = byPStatus
+    .filter(q => {
+      if (dealFilter === 'all') return true
+      if (dealFilter === 'none') return !q.deal_status
+      return q.deal_status === dealFilter
+    })
     .filter(q => {
       if (!searchTerm.trim()) return true
       const s = searchTerm.toLowerCase()
@@ -59,8 +104,19 @@ export default function PurchasingQueue() {
         (q.requests?.product_type || '').toLowerCase().includes(s)
       )
     })
-  const counts = { all: quotations.length, pending: 0, approved: 0, hold: 0, cancelled: 0 }
-  quotations.forEach(q => { if (counts[q.purchasing_status] !== undefined) counts[q.purchasing_status]++ })
+  // Hitungan kartu: selalu dari SELURUH data, bukan dari hasil filter.
+  const kartu = {
+    dealBelum: quotations.filter(q => !q.purchasing_projected_at && q.deal_status === 'deal').length,
+    belum:     quotations.filter(q => !q.purchasing_projected_at).length,
+    menunggu:  quotations.filter(q => q.purchasing_projected_at && (q.purchasing_status || 'pending') === 'pending').length,
+  }
+
+  const projCounts = { all: quotations.length, sudah: 0, belum: 0 }
+  quotations.forEach(q => { if (q.purchasing_projected_at) projCounts.sudah++; else projCounts.belum++ })
+  const counts = { all: byProj.length, pending: 0, approved: 0, hold: 0, cancelled: 0 }
+  byProj.forEach(q => { if (counts[q.purchasing_status] !== undefined) counts[q.purchasing_status]++ })
+  const dealCounts = { all: byPStatus.length, deal:0, followup:0, no_deal:0, quoted:0, none:0 }
+  byPStatus.forEach(q => { const k = q.deal_status || 'none'; if (dealCounts[k] !== undefined) dealCounts[k]++ })
 
   function elapsed(ts) {
     if (!ts) return '—'
@@ -81,15 +137,66 @@ export default function PurchasingQueue() {
         <span style={{ fontSize:12, color:'#6b7280' }}>Live — update otomatis saat ada quotation dikirim</span>
       </div>
 
-      <div style={{ display:'flex', gap:8, marginBottom:20 }}>
-        {[['pending','Menunggu Validasi'],['approved','Disetujui'],['hold','Hold'],['cancelled','Cancelled'],['all','Semua']].map(([val,label]) => (
-          <button key={val} onClick={() => setFilter(val)} style={{
-            padding:'6px 16px', borderRadius:20, fontSize:13, cursor:'pointer', fontWeight:500,
-            background: filter===val ? '#2563eb' : '#fff',
-            color: filter===val ? '#fff' : '#6b7280',
-            border: filter===val ? '1px solid #2563eb' : '1px solid #e5e7eb'
-          }}>{label} <span style={{ opacity:0.7 }}>({counts[val] ?? 0})</span></button>
+      {/* Kartu ringkasan sekaligus pintasan filter.
+          Angkanya dihitung dari SELURUH data, tidak ikut filter yang sedang
+          aktif -- supaya selalu menunjukkan beban kerja sebenarnya.
+          Kartu 1 adalah bagian dari kartu 2; itu disengaja, karena "Deal"
+          adalah prioritas DI DALAM tumpukan yang belum diproyeksi. */}
+      <div style={{ display:'flex', gap:12, flexWrap:'wrap', marginBottom:18 }}>
+        {[
+          { key:'deal_belum', ikon:'⚠️', warna:'#A32D2D', jumlah:kartu.dealBelum, label:'Deal belum diproyeksi',
+            set:() => { setProjFilter('belum'); setDealFilter('deal'); setFilter('all') } },
+          { key:'belum', ikon:'📋', warna:'#854F0B', jumlah:kartu.belum, label:'Belum diproyeksi',
+            set:() => { setProjFilter('belum'); setDealFilter('all'); setFilter('all') } },
+          { key:'menunggu', ikon:'⏳', warna:'#185FA5', jumlah:kartu.menunggu, label:'Menunggu validasi',
+            set:() => { setProjFilter('sudah'); setDealFilter('all'); setFilter('pending') } },
+        ].map(k => (
+          <button key={k.key} onClick={k.set} title="Klik untuk memasang filter ini" style={{
+            flex:'1 1 200px', minWidth:200, textAlign:'left', cursor:'pointer',
+            background:'#fff', borderRadius:12, padding:'14px 16px',
+            border:'1px solid #e5e7eb', display:'flex', alignItems:'center', gap:12,
+          }}>
+            <div style={{
+              width:38, height:38, borderRadius:10, flexShrink:0, fontSize:17,
+              background:k.warna+'18', display:'flex', alignItems:'center', justifyContent:'center',
+            }}>{k.ikon}</div>
+            <div>
+              <div style={{ fontSize:20, fontWeight:700, color:k.warna, lineHeight:1.1 }}>{k.jumlah}</div>
+              <div style={{ fontSize:12, color:'#6b7280', marginTop:3 }}>{k.label}</div>
+            </div>
+          </button>
         ))}
+      </div>
+
+      {/* Filter dropdown. Angka di dalam tanda kurung bertingkat mengikuti
+          filter di atasnya (Proyeksi -> Purchasing -> Deal). */}
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap', marginBottom:12, alignItems:'center' }}>
+        <select value={projFilter} onChange={e => setProjFilter(e.target.value)} style={s.select}>
+          <option value="all">Semua Proyeksi ({projCounts.all})</option>
+          <option value="belum">Belum Diproyeksi ({projCounts.belum})</option>
+          <option value="sudah">Sudah Diproyeksi ({projCounts.sudah})</option>
+        </select>
+        <select value={filter} onChange={e => setFilter(e.target.value)} style={s.select}>
+          <option value="all">Semua Status Purchasing ({counts.all})</option>
+          <option value="pending">Belum Diputuskan ({counts.pending})</option>
+          <option value="approved">Disetujui ({counts.approved})</option>
+          <option value="hold">Hold ({counts.hold})</option>
+          <option value="cancelled">Cancelled ({counts.cancelled})</option>
+        </select>
+        <select value={dealFilter} onChange={e => setDealFilter(e.target.value)} style={s.select}>
+          <option value="all">Semua Status Deal ({dealCounts.all})</option>
+          <option value="deal">Deal ({dealCounts.deal})</option>
+          <option value="followup">Follow Up ({dealCounts.followup})</option>
+          <option value="no_deal">Tidak Deal ({dealCounts.no_deal})</option>
+          <option value="quoted">Quoted ({dealCounts.quoted})</option>
+          <option value="none">Deal belum diisi ({dealCounts.none})</option>
+        </select>
+        {(projFilter !== 'all' || filter !== 'all' || dealFilter !== 'all') && (
+          <button onClick={() => { setProjFilter('all'); setFilter('all'); setDealFilter('all') }} style={{
+            padding:'7px 14px', borderRadius:8, border:'1px solid #e5e7eb', background:'#fff',
+            fontSize:13, color:'#6b7280', cursor:'pointer', fontWeight:500,
+          }}>✕ Reset Filter</button>
+        )}
       </div>
 
       <input
@@ -105,17 +212,20 @@ export default function PurchasingQueue() {
           <thead style={{ position:'sticky', top:0, zIndex:1, background:'#f9fafb' }}>
             <tr>
               <th style={s.th}>No. Request</th>
+              <th style={s.th}>Kode Order</th>
               <th style={s.th}>Customer / Produk</th>
               <th style={s.th}>Qty</th>
               <th style={s.th}>Harga Estimator</th>
-              <th style={s.th}>Status</th>
+              <th style={s.th}>Proyeksi</th>
+              <th style={s.th}>Status Purchasing</th>
+              <th style={s.th}>Status Deal</th>
               <th style={s.th}>Dikirim</th>
               <th style={s.th}>Aksi</th>
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 && (
-              <tr><td colSpan={7} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
+              <tr><td colSpan={10} style={{ ...s.td, color:'#9ca3af', textAlign:'center', padding:40 }}>
                 Tidak ada quotation
               </td></tr>
             )}
@@ -123,12 +233,40 @@ export default function PurchasingQueue() {
               <tr key={q.id}>
                 <td style={s.td}><div style={{ fontFamily:'monospace', fontSize:12, color:'#6b7280' }}>{q.requests?.request_number}</div></td>
                 <td style={s.td}>
+                  {q.kode_order ? (
+                    <div style={{ fontFamily:'monospace', fontSize:12, color:'#111827', fontWeight:600 }}>{q.kode_order}</div>
+                  ) : (
+                    <div style={{ fontSize:11, color:'#b45309' }} title="Sales belum mengisi Kode Order, jadi order ini belum tersambung ke order ERP">⚠️ Belum ditagging Sales</div>
+                  )}
+                </td>
+                <td style={s.td}>
                   <div style={{ fontWeight:500 }}>{q.customer_name}</div>
                   <div style={{ fontSize:12, color:'#9ca3af' }}>{q.product_type}</div>
                 </td>
                 <td style={s.td}>{(q.quantity || 0).toLocaleString('id-ID')}</td>
                 <td style={s.td}><div style={{ fontWeight:500 }}>Rp {(q.selling_price || 0).toLocaleString('id-ID')}</div></td>
-                <td style={s.td}><span style={s.badge(PSTATUS_COLOR[q.purchasing_status])}>{PSTATUS_LABEL[q.purchasing_status]}</span></td>
+                <td style={s.td}>
+                  {q.purchasing_projected_at
+                    ? <span style={s.badge('#3B6D11')} title={`Diproyeksikan ${new Date(q.purchasing_projected_at).toLocaleString('id-ID')}`}>✓ Sudah</span>
+                    : <span style={s.badge('#854F0B')} title="Purchasing belum menyimpan proyeksi biaya untuk order ini">Belum</span>}
+                </td>
+                <td style={s.td}>
+                  <select
+                    value={q.purchasing_status || 'pending'}
+                    onChange={e => updatePurchasingStatus(q.id, e.target.value)}
+                    style={{
+                      padding:'5px 8px', borderRadius:6, fontSize:12, border:'1px solid #e5e7eb',
+                      background:'#fff', fontWeight:500, cursor:'pointer',
+                      color: PSTATUS_COLOR[q.purchasing_status] || '#9ca3af',
+                    }}
+                  >
+                    <option value="pending">Belum Diputuskan</option>
+                    <option value="approved">Disetujui ✅</option>
+                    <option value="hold">Hold ⏸️</option>
+                    <option value="cancelled">Cancel ❌</option>
+                  </select>
+                </td>
+                <td style={s.td}><span style={s.badge(DEAL_COLOR[q.deal_status] || '#9ca3af')}>{DEAL_LABEL[q.deal_status] || 'Belum diisi'}</span></td>
                 <td style={s.td}><div style={{ fontSize:12, color:'#9ca3af' }}>{elapsed(q.sent_to_purchasing_at)}</div></td>
                 <td style={s.td}>
                   <button style={s.btnPrimary} onClick={() => navigate(`/purchasing/${q.id}`)}>

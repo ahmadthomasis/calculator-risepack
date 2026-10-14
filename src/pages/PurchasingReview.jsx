@@ -113,6 +113,13 @@ const STATUS_COLOR = { pending:'#854F0B', approved:'#3B6D11', hold:'#185FA5', ca
 const STATUS_BG    = { pending:'#FAEEDA', approved:'#EAF3DE', hold:'#E6F1FB', cancelled:'#FCEBEB' }
 const STATUS_LABEL = { pending:'Menunggu', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
 
+// Status deal dari Sales (quotations.deal_status). Nilai yang ada di database:
+// deal / followup / no_deal / quoted. Dipakai purchasing untuk tahu mana
+// pekerjaan prioritas (sudah Deal) dan mana yang sekadar minta validasi.
+const DEAL_LABEL = { deal:'Deal', followup:'Follow Up', no_deal:'Tidak Deal', quoted:'Quoted' }
+const DEAL_COLOR = { deal:'#3B6D11', followup:'#854F0B', no_deal:'#A32D2D', quoted:'#5f5e5a' }
+const DEAL_BG = { deal:'#EAF3DE', followup:'#FAEEDA', no_deal:'#FCEBEB', quoted:'#f1efe8' }
+
 export default function PurchasingReview() {
   const { quotationId } = useParams()
   const navigate = useNavigate()
@@ -121,9 +128,13 @@ export default function PurchasingReview() {
   const [quotation,   setQuotation]   = useState(null)
   const [request,     setRequest]     = useState(null)
   const [comparisons, setComparisons] = useState({})
+  // Kunci baris yang BENAR-BENAR diubah user di sesi ini (format
+  // `${sectionKey}-${rowIndex}`). Saat simpan, HANYA baris inilah yang
+  // ditulis ke database -- baris milik akun purchasing lain yang sedang
+  // mengisi area berbeda tidak disentuh sama sekali.
+  const [dirtyKeys,   setDirtyKeys]   = useState(() => new Set())
   const [notes,       setNotes]       = useState('')
   const [loading,     setLoading]     = useState(true)
-  const [saving,      setSaving]      = useState(false)
   const [savingDraft,  setSavingDraft]  = useState(false)
   const [draftSaved,   setDraftSaved]   = useState(false)
   // const [revisionNote, setRevisionNote] = useState('') -- aktifkan setelah ALTER TABLE
@@ -158,7 +169,12 @@ export default function PurchasingReview() {
       if (latest) q = latest
     }
     const { data: req } = await supabase.from('requests').select('*').eq('id', q.request_id).maybeSingle()
-    const { data: comps } = await supabase.from('purchasing_comparisons').select('*').eq('quotation_id', quotationId)
+    // PENTING: pakai q.id, BUKAN quotationId dari URL. Kalau estimator sudah
+    // simpan ulang, blok di atas memindahkan q ke quotation yang baru --
+    // dan harga pembanding purchasing juga sudah ikut dipindahkan ke sana
+    // oleh Calculator.jsx. Membaca pakai id URL yang sudah mati membuat
+    // seluruh harga terlihat hilang padahal masih ada.
+    const { data: comps } = await supabase.from('purchasing_comparisons').select('*').eq('quotation_id', q.id)
     const { data: addlMaster } = await supabase.from('raw_materials').select('id,name,price,rate_per_kg,rate_a,rate_b,minimum_charge').eq('category','additional')
     const { data: finRules } = await supabase.from('finishing_wo_split_rules').select('*')
     setFinSplitRules(Object.fromEntries((finRules || []).map(r => [r.proses, r])))
@@ -180,6 +196,7 @@ export default function PurchasingReview() {
 
   function updatePrice(sectionKey, rowIndex, value, estimatorPrice, itemName) {
     const key = `${sectionKey}-${rowIndex}`
+    setDirtyKeys(prev => new Set(prev).add(key))
     setComparisons(prev => ({
       ...prev,
       [key]: {
@@ -196,6 +213,7 @@ export default function PurchasingReview() {
   // otomatis = jumlah ketiganya.
   function updateFinishingPart(rowIndex, part, value, estimatorPrice, itemName) {
     const key = `finishing_wo-${rowIndex}`
+    setDirtyKeys(prev => new Set(prev).add(key))
     setComparisons(prev => {
       const cur = prev[key] || {}
       const parts = {
@@ -289,16 +307,40 @@ export default function PurchasingReview() {
     ? totalPurchasingWithFallback / quotation.quantity
     : null
 
+  // Simpan HANYA baris yang diubah user di sesi ini.
+  //
+  // Versi lama MENGHAPUS SEMUA baris purchasing_comparisons milik 1 quotation
+  // lalu insert ulang isi layarnya sendiri. Akibatnya dua akun purchasing
+  // tidak bisa kerja bersamaan: saat Hamam menyimpan Material Cost, baris
+  // Cetak Cost milik Nisa ikut terhapus -- padahal areanya beda. Sekarang
+  // pakai UPSERT per baris lewat unique key (quotation_id, section,
+  // row_index), lihat supabase/purchasing_multiuser_migration.sql.
   async function saveComparisons() {
-    const rows = Object.entries(comparisons)
-      .filter(([, c]) => c.purchasing_price != null && c.purchasing_price !== '')
-      .map(([key, c]) => {
-        const lastDash = key.lastIndexOf('-')
-        const sectionKey = key.slice(0, lastDash)
-        const rowIndex = Number(key.slice(lastDash + 1))
-        return {
-          quotation_id: quotationId,
-          section: SECTION_DB_MAP[sectionKey] || sectionKey,
+    const keys = Array.from(dirtyKeys)
+    if (keys.length === 0) return true
+
+    // Sasaran penyimpanan adalah quotation yang SEDANG DITAMPILKAN, bukan id
+    // di URL. Keduanya berbeda kalau estimator menyimpan ulang sementara
+    // purchasing membuka halaman ini: loadAll() ikut pindah ke versi baru,
+    // jadi penyimpanan harus ikut pindah juga. Kalau tidak, harga tersimpan
+    // di baris yang sudah is_active=false dan tidak pernah terbaca lagi.
+    const targetId = quotation?.id || quotationId
+
+    const toUpsert = []
+    const toDelete = []
+    keys.forEach(key => {
+      const lastDash = key.lastIndexOf('-')
+      const sectionKey = key.slice(0, lastDash)
+      const rowIndex = Number(key.slice(lastDash + 1))
+      const section = SECTION_DB_MAP[sectionKey] || sectionKey
+      const c = comparisons[key] || {}
+      if (c.purchasing_price == null || c.purchasing_price === '') {
+        // User mengosongkan baris ini -- hapus baris ITU saja.
+        toDelete.push({ section, rowIndex })
+      } else {
+        toUpsert.push({
+          quotation_id: targetId,
+          section,
           row_index: rowIndex,
           item_name: c.item_name || null,
           estimator_price: c.estimator_price ?? null,
@@ -307,50 +349,70 @@ export default function PurchasingReview() {
           purchasing_bahan: c.purchasing_bahan ?? null,
           purchasing_mesin: c.purchasing_mesin ?? null,
           updated_at: new Date().toISOString(),
-        }
-      })
-    if (rows.length === 0) return true
-    await supabase.from('purchasing_comparisons').delete().eq('quotation_id', quotationId)
-    const { error } = await supabase.from('purchasing_comparisons').insert(rows)
-    if (error) {
-      console.error('Gagal simpan comparisons:', error)
-      alert('Gagal menyimpan harga pembanding: ' + error.message)
-      return false
+        })
+      }
+    })
+
+    if (toUpsert.length > 0) {
+      const { error } = await supabase
+        .from('purchasing_comparisons')
+        .upsert(toUpsert, { onConflict: 'quotation_id,section,row_index' })
+      if (error) {
+        console.error('Gagal simpan comparisons:', error)
+        alert('Gagal menyimpan harga pembanding: ' + error.message)
+        return false
+      }
     }
+
+    for (const d of toDelete) {
+      const { error } = await supabase
+        .from('purchasing_comparisons')
+        .delete()
+        .eq('quotation_id', targetId)
+        .eq('section', d.section)
+        .eq('row_index', d.rowIndex)
+      if (error) {
+        console.error('Gagal hapus baris pembanding:', error)
+        alert('Gagal menghapus baris pembanding: ' + error.message)
+        return false
+      }
+    }
+
+    setDirtyKeys(new Set())
     return true
   }
 
-  async function saveDraft() {
+  async function saveProyeksi() {
     setSavingDraft(true)
     const saved = await saveComparisons()
     if (saved) {
       // Simpan notes ke quotations — pakai quotation.id yang sudah di-load
       // (mungkin berbeda dari URL kalau estimator sudah save ulang)
       const targetId = quotation?.id || quotationId
-      await supabase.from('quotations').update({
+      const { data: updated, error: notesErr } = await supabase.from('quotations').update({
         purchasing_notes: notes || null,
-      }).eq('id', targetId)
+        // Menandai order ini SUDAH DIPROYEKSI oleh purchasing. Keputusan
+        // Disetujui/Hold/Cancel terpisah, dipilih di halaman Antrian.
+        purchasing_projected_at: new Date().toISOString(),
+        purchasing_projected_by: profile?.id || null,
+      }).eq('id', targetId).select('id')
+      if (notesErr) {
+        console.error('Gagal simpan catatan purchasing:', notesErr)
+        alert('Gagal menyimpan catatan: ' + notesErr.message)
+        setSavingDraft(false)
+        return
+      }
+      if (!updated || updated.length === 0) {
+        alert('Catatan TIDAK tersimpan — tidak ada baris yang berubah.\n\nHarga pembanding sudah tersimpan, tapi catatan gagal. Kemungkinan akun Anda belum punya izin mengubah quotation ini.')
+        setSavingDraft(false)
+        return
+      }
       setDraftSaved(true)
       setTimeout(() => setDraftSaved(false), 2500)
     }
     setSavingDraft(false)
   }
 
-  async function decide(status) {
-    if (!hasAtLeastOnePrice || !profile) return
-    setSaving(true)
-    const saved = await saveComparisons()
-    if (!saved) { setSaving(false); return }
-    const { error } = await supabase.from('quotations').update({
-      purchasing_status: status,
-      purchasing_notes: notes || null,
-      purchasing_reviewed_at: new Date().toISOString(),
-      purchasing_reviewed_by: profile.id,
-    }).eq('id', quotationId)
-    setSaving(false)
-    if (error) { console.error('Gagal update status purchasing:', error); alert('Gagal menyimpan keputusan: ' + error.message); return }
-    navigate('/purchasing')
-  }
 
   if (loading) return <Layout title="Validasi"><div style={{ padding:40, textAlign:'center', color:'#9ca3af' }}>Memuat…</div></Layout>
   if (!quotation) return <Layout title="Validasi"><div style={{ padding:40, textAlign:'center', color:'#9ca3af' }}>Quotation tidak ditemukan.</div></Layout>
@@ -387,6 +449,28 @@ export default function PurchasingReview() {
 
       {/* Header Info */}
       <div style={{ background:'#fff', border:`0.5px solid ${C.border}`, borderLeft:`4px solid ${C.orange}`, borderRadius:10, padding:'14px 18px', marginBottom:18 }}>
+        {/* Kode Order + Status Deal — penanda apakah ini pekerjaan prioritas.
+            Ditaruh di baris sendiri, bukan ditambahkan ke grid 7 kolom di
+            bawah, supaya tidak makin sempit dan tetap terbaca sekilas. */}
+        <div style={{ display:'flex', alignItems:'flex-start', gap:28, flexWrap:'wrap', marginBottom:12, paddingBottom:12, borderBottom:`0.5px solid ${C.border}` }}>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:3 }}>Kode Order</div>
+            {quotation.kode_order ? (
+              <div style={{ fontFamily:'monospace', fontSize:13, fontWeight:600, color:C.dark }}>{quotation.kode_order}</div>
+            ) : (
+              <div style={{ fontSize:12, color:'#b45309', fontWeight:500 }} title="Sales belum mengisi Kode Order, jadi order ini belum tersambung ke order ERP">⚠️ Belum ditagging Sales</div>
+            )}
+          </div>
+          <div>
+            <div style={{ fontSize:11, color:'#9ca3af', marginBottom:3 }}>Status Deal</div>
+            <span style={{
+              padding:'3px 12px', borderRadius:20, fontSize:12, fontWeight:600,
+              background: DEAL_BG[quotation.deal_status] || '#f3f4f6',
+              color: DEAL_COLOR[quotation.deal_status] || '#6b7280',
+            }}>{DEAL_LABEL[quotation.deal_status] || 'Belum diisi Sales'}</span>
+          </div>
+        </div>
+
         <div style={{ display:'grid', gridTemplateColumns:'repeat(7, 1fr)', gap:10, fontSize:13 }}>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Customer</div><div style={{ fontWeight:500 }}>{quotation.customer_name}</div></div>
           <div><div style={{ fontSize:11, color:'#9ca3af', marginBottom:2 }}>Produk</div><div style={{ fontWeight:500 }}>{quotation.product_type}</div></div>
@@ -711,31 +795,21 @@ export default function PurchasingReview() {
 
       {/* Box request revisi ke estimator — aktifkan setelah ALTER TABLE dijalankan */}
 
-      {/* Tombol Simpan Draft — bisa disimpan kapan saja tanpa keputusan final */}
+      {/* Save Proyeksi — satu-satunya aksi di halaman ini.
+          Keputusan Disetujui / Hold / Cancel TIDAK lagi di sini; dipilih lewat
+          dropdown di halaman Antrian Purchasing, mengikuti pola dropdown
+          status deal di dashboard Sales. Halaman ini murni untuk mengerjakan
+          dan menyimpan proyeksi biaya. */}
       <div style={{ marginBottom:12 }}>
-        <button onClick={saveDraft} disabled={savingDraft || !hasAtLeastOnePrice}
-          style={{ width:'100%', padding:12, borderRadius:8, border:`1.5px solid ${hasAtLeastOnePrice ? '#2563eb' : '#d1d5db'}`, fontSize:14, fontWeight:500, cursor: hasAtLeastOnePrice && !savingDraft ? 'pointer' : 'not-allowed', background: hasAtLeastOnePrice ? '#eff6ff' : '#f9fafb', color: hasAtLeastOnePrice ? '#2563eb' : '#9ca3af' }}>
-          {savingDraft ? 'Menyimpan...' : draftSaved ? '✓ Tersimpan' : '💾 Simpan Draft (tanpa keputusan akhir)'}
+        <button onClick={saveProyeksi} disabled={savingDraft || !hasAtLeastOnePrice}
+          style={{ width:'100%', padding:14, borderRadius:8, border:'none', fontSize:14, fontWeight:600, cursor: hasAtLeastOnePrice && !savingDraft ? 'pointer' : 'not-allowed', background: hasAtLeastOnePrice ? '#3b6d11' : '#d1d5db', color:'#fff' }}>
+          {savingDraft ? 'Menyimpan...' : draftSaved ? '✓ Proyeksi tersimpan' : '💾 Save Proyeksi'}
         </button>
-        <div style={{ fontSize:11, color:'#9ca3af', textAlign:'center', marginTop:4 }}>
-          Gunakan ini untuk simpan progress dan biarkan rekan melanjutkan validasi
+        <div style={{ fontSize:11, color:'#9ca3af', textAlign:'center', marginTop:6, lineHeight:1.5 }}>
+          Menyimpan proyeksi biaya dan menandai order ini <strong>Sudah Diproyeksi</strong>.<br />
+          Boleh disimpan berkali-kali — rekan tetap bisa melanjutkan area yang lain.<br />
+          Keputusan Disetujui / Hold / Cancel dipilih di halaman Antrian Purchasing.
         </div>
-      </div>
-
-      {/* Tombol keputusan */}
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:12 }}>
-        <button disabled={!hasAtLeastOnePrice || saving} onClick={() => decide('approved')}
-          style={{ padding:14, borderRadius:8, border:'none', fontSize:14, fontWeight:500, cursor: hasAtLeastOnePrice && !saving ? 'pointer' : 'not-allowed', background: hasAtLeastOnePrice ? '#3b6d11' : '#d1d5db', color:'#fff', opacity: saving ? 0.7 : 1 }}>
-          {saving ? 'Menyimpan...' : 'Disetujui'}
-        </button>
-        <button disabled={!hasAtLeastOnePrice || saving} onClick={() => decide('hold')}
-          style={{ padding:14, borderRadius:8, border:`2px solid ${hasAtLeastOnePrice ? C.orange : '#d1d5db'}`, fontSize:14, fontWeight:500, cursor: hasAtLeastOnePrice && !saving ? 'pointer' : 'not-allowed', background:'#fff', color: hasAtLeastOnePrice ? C.orange : '#d1d5db' }}>
-          Hold
-        </button>
-        <button disabled={!hasAtLeastOnePrice || saving} onClick={() => decide('cancelled')}
-          style={{ padding:14, borderRadius:8, border:`2px solid ${hasAtLeastOnePrice ? '#A32D2D' : '#d1d5db'}`, fontSize:14, fontWeight:500, cursor: hasAtLeastOnePrice && !saving ? 'pointer' : 'not-allowed', background:'#fff', color: hasAtLeastOnePrice ? '#A32D2D' : '#d1d5db' }}>
-          Cancel
-        </button>
       </div>
     </Layout>
   )
