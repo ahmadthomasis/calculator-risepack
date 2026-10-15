@@ -274,6 +274,15 @@ export default function DashboardPantau() {
         }
       })
 
+      // CATATAN SOAL JUMLAH BARIS, supaya tidak dihitung ulang dan dikira bug:
+      // jumlah baris di layar SELALU lebih sedikit daripada jumlah baris di
+      // tabel erp_orders, dan itu wajar. Dua pengurangan terjadi berurutan:
+      //   1. dalamCakupan() di atas membuang order pra-Oktober yang tidak ada
+      //      quotation deal-nya;
+      //   2. mergeWorkshopShipments() di bawah melebur pengiriman parsial --
+      //      Kode Order berakhiran -2, -3, dst. menyatu ke baris induknya.
+      // Contoh nyata 15 Okt 2026: 82 baris erp_orders -> 0 dibuang penjaga ->
+      // 2 dilebur -> 80 di layar.
       const merged = mergeWorkshopShipments(result)
 
       // Sort by tanggal Order (terbaru dulu). Yang tidak punya tgl_order
