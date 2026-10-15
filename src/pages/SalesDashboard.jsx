@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
 import KodeOrderPicker from '../components/KodeOrderPicker'
+import FilterTanggal, { dalamRentang } from '../components/FilterTanggal'
 
 const PRODUCT_TYPES = {
   'Hardbox': [
@@ -110,6 +111,9 @@ export default function SalesDashboard() {
   const [uploading, setUploading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
   const [salesFilter, setSalesFilter] = useState('all')   // filter per sales (manager)
+  const [dealFilter, setDealFilter]   = useState('all')   // filter status deal
+  const [tglDari, setTglDari]         = useState('')      // rentang tanggal, default: semua
+  const [tglSampai, setTglSampai]     = useState('')
   const [names, setNames]         = useState({})          // profil id -> full_name
   const [editingId, setEditingId] = useState(null)
   const [productIndex, setProductIndex] = useState(1)  // counter produk ke-berapa saat tambah beruntun
@@ -377,9 +381,49 @@ export default function SalesDashboard() {
   const isInnersales = profile?.role === 'sales' && !!profile?.is_innersales
   const lihatMilikOrangLain = isManager || isInnersales
 
+  // Satu request bisa punya BEBERAPA quotation aktif sekaligus -- itu varian qty
+  // yang ditawarkan ke customer, dan tabel di bawah menampilkan semua varian itu
+  // baris per baris.
+  const quotAktif = r => (Array.isArray(r.quotations) ? r.quotations : []).filter(q => !q.is_draft && q.is_active)
+
+  // Untuk FILTER, syaratnya "ada minimal satu varian aktif berstatus ini",
+  // bukan status satu varian wakil. Request yang salah satu variannya Deal
+  // memang harus ikut muncul saat difilter Deal -- kalau dipilih satu wakil,
+  // request seperti itu malah hilang dari hasil filter.
+  const punyaStatusDeal = (r, st) => quotAktif(r).some(qt => (qt.deal_status || 'quoted') === st)
+
+  // Dihitung SESUDAH filter sales dan rentang tanggal supaya angka di dropdown
+  // cocok dengan yang benar-benar tampil, bukan dengan seluruh tabel.
+  const dasarHitung = requests
+    .filter(r => salesFilter === 'all' || r.sales_id === salesFilter)
+    .filter(r => dalamRentang(r.submitted_at, tglDari, tglSampai))
+
+  // SATUAN HITUNGNYA VARIAN QTY (quotation), bukan request -- sama dengan
+  // Dashboard Manager dan Antrian Estimator. Sales menandai Deal pada satu
+  // varian qty, jadi varian itulah satuan sebenarnya; dihitung per request,
+  // satu request yang dua variannya sama-sama Deal hanya terhitung satu dan
+  // angkanya tidak akan pernah cocok dengan Manager. Jadi angka di dalam
+  // kurung bisa lebih besar daripada jumlah baris request yang tampil.
+  const hitungDeal = st => dasarHitung.reduce(
+    (n, r) => n + quotAktif(r).filter(qt => (qt.deal_status || 'quoted') === st).length, 0)
+  const totalVarian = dasarHitung.reduce((n, r) => n + quotAktif(r).length, 0)
+
+  const cocokPencarian = r => {
+    const kata = searchTerm.trim().toLowerCase()
+    if (!kata) return true
+    return [
+      r.customer_name,
+      r.request_number,
+      r.product_type,
+      ...quotAktif(r).map(qt => qt.kode_order),
+    ].some(v => (v || '').toLowerCase().includes(kata))
+  }
+
   const filteredRequests = requests
     .filter(r => salesFilter === 'all' || r.sales_id === salesFilter)
-    .filter(r => !searchTerm.trim() || (r.customer_name || '').toLowerCase().includes(searchTerm.trim().toLowerCase()))
+    .filter(r => dalamRentang(r.submitted_at, tglDari, tglSampai))
+    .filter(r => dealFilter === 'all' || punyaStatusDeal(r, dealFilter))
+    .filter(cocokPencarian)
 
   return (
     <Layout title="Request Harga">
@@ -424,13 +468,24 @@ export default function SalesDashboard() {
               {salesRanking.map(sr => <option key={sr.id} value={sr.id}>{sr.name} ({sr.n})</option>)}
             </select>
           )}
+          <select value={dealFilter} onChange={e => setDealFilter(e.target.value)} title="Filter status deal"
+            style={{ padding:'8px 12px', borderRadius:8, border:`1px solid ${C.border}`, fontSize:13, outline:'none', background:'#fff', color:C.dark }}>
+            <option value="all">Semua Status Deal ({totalVarian})</option>
+            <option value="deal">Deal ✅ ({hitungDeal('deal')})</option>
+            <option value="followup">Followup 🔄 ({hitungDeal('followup')})</option>
+            <option value="quoted">Belum Diisi ({hitungDeal('quoted')})</option>
+            <option value="no_deal">No Deal ❌ ({hitungDeal('no_deal')})</option>
+          </select>
           <input
             type="text"
-            placeholder="Cari nama customer..."
+            placeholder="Cari customer, kode order, no. request..."
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            style={{ padding:'8px 14px', borderRadius:8, border:`1px solid ${C.border}`, fontSize:13, width:200, outline:'none', color:C.dark }}
+            title="Mencari di nama customer, Kode Order, nomor request, dan jenis produk"
+            style={{ padding:'8px 14px', borderRadius:8, border:`1px solid ${C.border}`, fontSize:13, width:250, outline:'none', color:C.dark }}
           />
+          <FilterTanggal dari={tglDari} sampai={tglSampai} setDari={setTglDari} setSampai={setTglSampai}
+            label="Masuk" title="Saring berdasarkan tanggal request masuk" />
           <button style={s.btnPrimary} onClick={() => showForm ? cancelEdit() : setShowForm(true)}>
             {showForm ? 'Tutup Form' : '+ Request Harga Baru'}
           </button>

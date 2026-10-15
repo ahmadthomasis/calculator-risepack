@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
 import { fetchPricedKeys, missingItems } from '../lib/itemKurang'
+import FilterTanggal, { dalamRentang } from '../components/FilterTanggal'
 
 const PSTATUS_LABEL = { pending:'Belum Diputuskan', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
 const PSTATUS_COLOR = { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }
@@ -32,6 +33,8 @@ export default function PurchasingQueue() {
   const [filter, setFilter] = useState('all')
   const [dealFilter, setDealFilter] = useState('all')
   const [projFilter, setProjFilter] = useState('all')
+  const [tglDari, setTglDari]       = useState('')   // rentang tanggal, default: semua
+  const [tglSampai, setTglSampai]   = useState('')
   const [searchTerm, setSearchTerm] = useState('')
   const [pulse, setPulse] = useState(false)
   // Kunci `${quotation_id}|${section}|${row_index}` yang sudah punya harga
@@ -79,10 +82,17 @@ export default function PurchasingQueue() {
   // Tiga filter bertingkat: Proyeksi -> Status Purchasing -> Status Deal.
   // Hitungan pada tiap baris pil mengikuti filter DI ATASNYA, jadi angkanya
   // selalu menjawab "dari yang sedang tampil, berapa yang ...".
-  const byProj = projFilter === 'all' ? quotations
-    : projFilter === 'sudah' ? quotations.filter(q => q.purchasing_projected_at)
-    : projFilter === 'kurang' ? quotations.filter(q => missingItems(q, pricedKeys).count > 0)
-    : quotations.filter(q => !q.purchasing_projected_at)
+  // Rentang tanggal dipasang PALING DULU, sebelum ketiga filter bertingkat.
+  // Kalau dipasang terakhir, angka di dalam kurung pada dropdown akan
+  // menjanjikan baris yang ternyata tidak muncul. Patokannya tanggal masuk ke
+  // antrean ini (sent_to_purchasing_at), bukan tanggal request dibuat -- itu
+  // yang relevan untuk beban kerja purchasing.
+  const dalamTanggal = quotations.filter(q => dalamRentang(q.sent_to_purchasing_at, tglDari, tglSampai))
+
+  const byProj = projFilter === 'all' ? dalamTanggal
+    : projFilter === 'sudah' ? dalamTanggal.filter(q => q.purchasing_projected_at)
+    : projFilter === 'kurang' ? dalamTanggal.filter(q => missingItems(q, pricedKeys).count > 0)
+    : dalamTanggal.filter(q => !q.purchasing_projected_at)
 
   const byPStatus = filter === 'all' ? byProj : byProj.filter(q => q.purchasing_status === filter)
 
@@ -126,21 +136,24 @@ export default function PurchasingQueue() {
   // Peta id quotation -> { count, names } item yang belum dihargai purchasing.
   // Dihitung sekali untuk dipakai kartu, filter, dan badge di tabel.
   const kurangMap = {}
-  quotations.forEach(q => {
+  dalamTanggal.forEach(q => {
     const m = missingItems(q, pricedKeys)
     if (m.count > 0) kurangMap[q.id] = m
   })
 
-  // Hitungan kartu: selalu dari SELURUH data, bukan dari hasil filter.
+  // Hitungan kartu: dari seluruh data DI DALAM RENTANG TANGGAL, bukan dari
+  // hasil filter yang lain. Rentang tanggal sengaja ikut diperhitungkan supaya
+  // kartu di atas tidak pernah menyebut angka yang tidak bisa ditemukan di
+  // tabel di bawahnya.
   const kartu = {
-    dealBelum: quotations.filter(q => !q.purchasing_projected_at && q.deal_status === 'deal').length,
-    belum:     quotations.filter(q => !q.purchasing_projected_at).length,
-    menunggu:  quotations.filter(q => q.purchasing_projected_at && (q.purchasing_status || 'pending') === 'pending').length,
+    dealBelum: dalamTanggal.filter(q => !q.purchasing_projected_at && q.deal_status === 'deal').length,
+    belum:     dalamTanggal.filter(q => !q.purchasing_projected_at).length,
+    menunggu:  dalamTanggal.filter(q => q.purchasing_projected_at && (q.purchasing_status || 'pending') === 'pending').length,
     kurang:    Object.keys(kurangMap).length,
   }
 
-  const projCounts = { all: quotations.length, sudah: 0, belum: 0 }
-  quotations.forEach(q => { if (q.purchasing_projected_at) projCounts.sudah++; else projCounts.belum++ })
+  const projCounts = { all: dalamTanggal.length, sudah: 0, belum: 0 }
+  dalamTanggal.forEach(q => { if (q.purchasing_projected_at) projCounts.sudah++; else projCounts.belum++ })
   const counts = { all: byProj.length, pending: 0, approved: 0, hold: 0, cancelled: 0 }
   byProj.forEach(q => { if (counts[q.purchasing_status] !== undefined) counts[q.purchasing_status]++ })
   const dealCounts = { all: byPStatus.length, deal:0, followup:0, no_deal:0, quoted:0, none:0 }
@@ -225,8 +238,10 @@ export default function PurchasingQueue() {
           <option value="quoted">Quoted ({dealCounts.quoted})</option>
           <option value="none">Deal belum diisi ({dealCounts.none})</option>
         </select>
-        {(projFilter !== 'all' || filter !== 'all' || dealFilter !== 'all') && (
-          <button onClick={() => { setProjFilter('all'); setFilter('all'); setDealFilter('all') }} style={{
+        <FilterTanggal dari={tglDari} sampai={tglSampai} setDari={setTglDari} setSampai={setTglSampai}
+          label="Masuk antrean" title="Saring berdasarkan tanggal order dikirim ke purchasing" />
+        {(projFilter !== 'all' || filter !== 'all' || dealFilter !== 'all' || tglDari || tglSampai) && (
+          <button onClick={() => { setProjFilter('all'); setFilter('all'); setDealFilter('all'); setTglDari(''); setTglSampai('') }} style={{
             padding:'7px 14px', borderRadius:8, border:'1px solid #e5e7eb', background:'#fff',
             fontSize:13, color:'#6b7280', cursor:'pointer', fontWeight:500,
           }}>✕ Reset Filter</button>

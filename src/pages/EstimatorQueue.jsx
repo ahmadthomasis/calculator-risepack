@@ -3,12 +3,44 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import FilterTanggal, { dalamRentang } from '../components/FilterTanggal'
 
 const STATUS_LABEL = { pending:'Menunggu', in_progress:'Dikerjakan', done:'Selesai', cancelled:'Dibatalkan' }
 const STATUS_COLOR = { pending:'#f59e0b', in_progress:'#2563eb', done:'#16a34a', cancelled:'#9ca3af' }
 
 const DEAL_LABEL = { quoted:'Belum Diisi', deal:'Deal ✅', no_deal:'No Deal ❌', followup:'Followup 🔄' }
 const DEAL_COLOR = { quoted:'#9ca3af', deal:'#16a34a', no_deal:'#dc2626', followup:'#d97706' }
+
+// Satu request bisa punya BEBERAPA quotation AKTIF sekaligus -- itu varian qty
+// yang ditawarkan ke customer (misal 10.000 pcs dan 5.000 pcs), dan Sales
+// menandai Deal pada salah satunya saja. Baris di tabel ini satu per REQUEST,
+// jadi harus dipilih satu quotation sebagai wakilnya.
+//
+// Dulu yang diambil `[0]`, yaitu quotation aktif mana pun yang kebetulan datang
+// duluan dari PostgREST. Urutan itu TIDAK DIJAMIN, jadi order yang sudah Deal
+// bisa tampil sebagai "Belum Diisi" atau "No Deal" di antrean ini. Dilaporkan
+// 15 Okt 2026 pada kode order 4974 dan 5057, dan terbukti di data:
+//   REQ-20260820-0496  -> [0] quoted qty 10.000, padahal yang Deal qty 5.000
+//   REQ-20261015-0985  -> [0] no_deal qty 10.000, padahal yang Deal qty 5.000
+//
+// Wakilnya sekarang dipilih, bukan diambil asal: yang sudah Deal menang (kalau
+// satu varian sudah deal, ordernya memang jalan), lalu Followup, lalu yang
+// belum diisi, lalu No Deal. Seri diputus oleh updated_at terbaru.
+//
+// CATATAN: kolom harga per qty di tabel sengaja TIDAK memakai fungsi ini -- di
+// sana semua varian aktif memang harus ditampilkan, bukan cuma wakilnya.
+const URUTAN_WAKIL = { deal: 0, followup: 1, quoted: 2, no_deal: 3 }
+
+function quotWakil(r) {
+  const aktif = (r?.quotations || []).filter(qt => !qt.is_draft && qt.is_active)
+  if (aktif.length <= 1) return aktif[0]
+  return [...aktif].sort((a, b) => {
+    const pa = URUTAN_WAKIL[a.deal_status] ?? 9
+    const pb = URUTAN_WAKIL[b.deal_status] ?? 9
+    if (pa !== pb) return pa - pb
+    return String(b.updated_at || '').localeCompare(String(a.updated_at || ''))
+  })[0]
+}
 
 const LAST_SEEN_KEY = 'risepack_estimator_deal_last_seen'
 
@@ -33,6 +65,8 @@ export default function EstimatorQueue() {
   const [salesFilter, setSalesFilter] = useState('all')
   const [dealFilter,  setDealFilter]  = useState('all')
   const [purchFilter, setPurchFilter] = useState('all')
+  const [tglDari, setTglDari]       = useState('')   // rentang tanggal, default: semua
+  const [tglSampai, setTglSampai]   = useState('')
   const [lastSeen] = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
 
   useEffect(() => {
@@ -115,14 +149,24 @@ export default function EstimatorQueue() {
 
   const salesList = [...new Set(requests.map(r => r.profiles?.full_name).filter(Boolean))].sort()
 
-  // Quotation aktif milik satu request -- pola yang sudah dipakai di tabel.
-  const activeQuot = r => (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
+  // Quotation wakil dari satu request (lihat quotWakil di atas).
+  const activeQuot = quotWakil
 
   const mintaRevisi = r => !!activeQuot(r)?.needs_revision
 
-  const filtered = (filter === 'all' ? requests
-    : filter === 'minta_revisi' ? requests.filter(mintaRevisi)
-    : requests.filter(r => r.status === filter))
+  // Semua varian qty aktif dari sebuah request. Dipakai untuk FILTER dan
+  // HITUNGAN. Untuk badge di tabel tetap quotWakil -- satu baris butuh satu
+  // wakil, tapi menyaring dan menghitung tidak boleh kehilangan varian lain.
+  const quotAktifSemua = r => (r?.quotations || []).filter(qt => !qt.is_draft && qt.is_active)
+
+  // Rentang tanggal dipasang PALING DULU supaya seluruh hitungan di bawahnya
+  // ikut menyesuaikan, dan angka di dalam kurung tidak pernah menjanjikan
+  // baris yang ternyata tidak muncul.
+  const dalamTanggal = requests.filter(r => dalamRentang(r.submitted_at, tglDari, tglSampai))
+
+  const filtered = (filter === 'all' ? dalamTanggal
+    : filter === 'minta_revisi' ? dalamTanggal.filter(mintaRevisi)
+    : dalamTanggal.filter(r => r.status === filter))
     .filter(r => {
       // Pencarian ikut menjangkau Kode Order, no. request, dan nama produk --
       // bukan cuma nama customer. Kode Order-nya ada di quotation aktif.
@@ -135,36 +179,58 @@ export default function EstimatorQueue() {
         || (q?.kode_order || '').toLowerCase().includes(s)
     })
     .filter(r => salesFilter === 'all' || r.profiles?.full_name === salesFilter)
+    // Syaratnya "ADA MINIMAL SATU varian aktif berstatus ini", bukan status si
+    // wakil. Request yang salah satu variannya Deal memang harus ikut muncul
+    // saat difilter Deal -- kalau dipakai wakilnya, request seperti itu malah
+    // hilang dari hasil filter. Sama dengan halaman Sales.
     .filter(r => {
       if (dealFilter === 'all') return true
-      const q = activeQuot(r)
-      // 'none' = belum ada quotation aktif atau status deal-nya masih kosong.
-      if (dealFilter === 'none') return !q?.deal_status
-      return q?.deal_status === dealFilter
+      const v = quotAktifSemua(r)
+      // 'none' = belum ada varian aktif sama sekali, atau semuanya belum diisi.
+      if (dealFilter === 'none') return v.length === 0 || v.every(q => !q.deal_status)
+      return v.some(q => q.deal_status === dealFilter)
     })
     .filter(r => {
       if (purchFilter === 'all') return true
-      const q = activeQuot(r)
+      const v = quotAktifSemua(r)
       // 'none' = belum pernah dikirim ke purchasing sama sekali.
-      if (purchFilter === 'none') return !q?.purchasing_status
-      return q?.purchasing_status === purchFilter
+      if (purchFilter === 'none') return v.length === 0 || v.every(q => !q.purchasing_status)
+      return v.some(q => q.purchasing_status === purchFilter)
     })
-  const counts   = { all: requests.length, pending: 0, in_progress: 0, done: 0, minta_revisi: 0 }
-  requests.forEach(r => {
+  const counts   = { all: dalamTanggal.length, pending: 0, in_progress: 0, done: 0, minta_revisi: 0 }
+  dalamTanggal.forEach(r => {
     if (counts[r.status] !== undefined) counts[r.status]++
     if (mintaRevisi(r)) counts.minta_revisi++
   })
 
-  // Hitungan di dalam kurung pada kedua dropdown, dihitung dari SELURUH data
-  // supaya angkanya menunjukkan beban sebenarnya, bukan sisa filter lain.
-  const dealCounts  = { all: requests.length, deal:0, followup:0, no_deal:0, quoted:0, none:0 }
-  const purchCounts = { all: requests.length, pending:0, approved:0, hold:0, cancelled:0, none:0 }
-  requests.forEach(r => {
-    const q = activeQuot(r)
-    const d = q?.deal_status || 'none'
-    if (dealCounts[d] !== undefined) dealCounts[d]++
-    const p = q?.purchasing_status || 'none'
-    if (purchCounts[p] !== undefined) purchCounts[p]++
+  // SATUAN HITUNG kedua dropdown di bawah ini adalah VARIAN QTY (quotation),
+  // BUKAN request -- sama dengan Dashboard Manager dan halaman Sales. Sales
+  // menandai Deal pada satu varian qty, jadi varian itulah satuan sebenarnya.
+  // Kalau dihitung per request, satu request yang dua variannya sama-sama Deal
+  // hanya terhitung satu dan angkanya tidak akan pernah cocok dengan Manager
+  // (terbukti 15 Okt 2026: Manager 25 quotation vs 24 request).
+  //
+  // Konsekuensi yang disengaja: angka di dalam kurung bisa LEBIH BESAR
+  // daripada jumlah baris yang tampil, karena satu baris request bisa mewakili
+  // beberapa varian. Baris tabel memang per request; yang dihitung varian.
+  const dealCounts  = { all: 0, deal:0, followup:0, no_deal:0, quoted:0, none:0 }
+  const purchCounts = { all: 0, pending:0, approved:0, hold:0, cancelled:0, none:0 }
+  dalamTanggal.forEach(r => {
+    const v = quotAktifSemua(r)
+    // Request tanpa varian aktif tetap dihitung satu, masuk 'none' -- supaya
+    // angkanya sejalan dengan predikat filter 'none' di atas.
+    if (v.length === 0) {
+      dealCounts.all++;  dealCounts.none++
+      purchCounts.all++; purchCounts.none++
+      return
+    }
+    v.forEach(q => {
+      dealCounts.all++;  purchCounts.all++
+      const d = q.deal_status || 'none'
+      if (dealCounts[d] !== undefined) dealCounts[d]++
+      const pst = q.purchasing_status || 'none'
+      if (purchCounts[pst] !== undefined) purchCounts[pst]++
+    })
   })
 
   function elapsed(submitted) {
@@ -279,6 +345,8 @@ export default function EstimatorQueue() {
             onChange={e => setSearchTerm(e.target.value)}
             style={{ padding:'8px 14px', borderRadius:8, border:'1px solid #e5e7eb', fontSize:13, width:220, outline:'none' }}
           />
+          <FilterTanggal dari={tglDari} sampai={tglSampai} setDari={setTglDari} setSampai={setTglSampai}
+            label="Masuk" title="Saring berdasarkan tanggal request masuk" />
         </div>
       </div>
 
@@ -417,7 +485,7 @@ export default function EstimatorQueue() {
                       // hanya menyala kalau purchasing memang menekan "Minta
                       // Revisi ke Estimator", dan padam sendiri begitu estimator
                       // menyimpan ulang (baris quotation baru default false).
-                      const q = (r.quotations || []).find(qt => !qt.is_draft && qt.is_active)
+                      const q = quotWakil(r)
                       if (!q?.needs_revision) return null
                       return (
                         <span title={q.revision_note || 'Purchasing meminta perbaikan pada perhitungan ini'} style={{
@@ -431,7 +499,7 @@ export default function EstimatorQueue() {
                 </td>
                 <td style={s.td}>
                   {(() => {
-                    const q = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
+                    const q = quotWakil(r)
                     if (!q || !q.deal_status) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     const isNew = q.deal_status !== 'quoted' && q.updated_at && new Date(q.updated_at) > new Date(lastSeen)
                     return (
@@ -463,7 +531,7 @@ export default function EstimatorQueue() {
                 </td>
                 <td style={s.td}>
                   {(() => {
-                    const q = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
+                    const q = quotWakil(r)
                     if (!q) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     if (q.cost_source === 'vendor') {
                       return (
@@ -477,7 +545,7 @@ export default function EstimatorQueue() {
                 </td>
                 <td style={s.td}>
                   {(() => {
-                    const q = (r.quotations || []).filter(qt => !qt.is_draft && qt.is_active)[0]
+                    const q = quotWakil(r)
                     if (!q || !q.purchasing_status) return <span style={{ color:'#d1d5db', fontSize:12 }}>—</span>
                     const labels = { pending:'Menunggu', approved:'Disetujui', hold:'Hold', cancelled:'Cancelled' }
                     const colors = { pending:'#d97706', approved:'#16a34a', hold:'#d97706', cancelled:'#dc2626' }

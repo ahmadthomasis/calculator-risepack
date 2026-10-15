@@ -73,7 +73,16 @@ export default function ManagerDashboard() {
     const [{ data: reqs }, { data: quots }] = await Promise.all([
       supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)')
         .gte('submitted_at', startInclusive.toISOString()).lte('submitted_at', endInclusive.toISOString()),
-      supabase.from('quotations').select('*, requests(id, customer_name, product_type, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
+      // HANYA versi AKTIF dan bukan draft. Tanpa dua syarat ini, setiap kali
+      // estimator menyimpan ulang sebuah perhitungan, versi lamanya tetap
+      // terhitung -- satu order yang pernah direvisi dua kali muncul tiga kali.
+      // Diukur 15 Okt 2026: 48 quotation ber-status deal, padahal yang aktif
+      // cuma 25; 23 sisanya versi mati. Yang ikut salah bukan cuma jumlah Deal
+      // tapi juga Total Nilai Deal, karena selling_price versi mati ikut
+      // dijumlahkan. Sales dan Estimator sudah menyaring keduanya sejak awal,
+      // jadi inilah yang membuat angka Manager tidak pernah cocok dengan mereka.
+      supabase.from('quotations').select('*, requests(id, request_number, customer_name, product_type, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
+        .eq('is_active', true).eq('is_draft', false)
         .gte('created_at', startInclusive.toISOString()).lte('created_at', endInclusive.toISOString())
         .eq('is_active', true).eq('is_draft', false),
     ])
@@ -109,9 +118,13 @@ export default function ManagerDashboard() {
     let list = [...filteredQuotations]
     if (tableSearch.trim()) {
       const q = tableSearch.toLowerCase()
+      // Kode Order ikut dicari: itu nomor yang dipakai orang saat menyebut
+      // sebuah order ke tim lain, jadi justru yang paling sering diketik.
       list = list.filter(x =>
         x.requests?.customer_name?.toLowerCase().includes(q) ||
-        x.requests?.product_type?.toLowerCase().includes(q)
+        x.requests?.product_type?.toLowerCase().includes(q) ||
+        x.kode_order?.toLowerCase().includes(q) ||
+        x.requests?.request_number?.toLowerCase().includes(q)
       )
     }
     if (tableDealFilter) list = list.filter(x => x.deal_status === tableDealFilter)
@@ -311,7 +324,7 @@ export default function ManagerDashboard() {
             {/* Search + Filter tabel */}
             <div style={{ display:'flex', gap:8, marginBottom:12, flexWrap:'wrap' }}>
               <input
-                placeholder="Cari customer atau produk..."
+                placeholder="Cari customer, produk, atau kode order..."
                 value={tableSearch} onChange={e => setTableSearch(e.target.value)}
                 style={{ flex:1, minWidth:160, height:32, padding:'0 10px', fontSize:12, borderRadius:6, border:'1px solid #e5e7eb', outline:'none' }}
               />
