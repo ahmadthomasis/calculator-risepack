@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import Layout from '../components/Layout'
+import { ambilSemua } from '../lib/ambilSemua'
 import KodeOrderPicker from '../components/KodeOrderPicker'
 
 const fmt = n => (n || 0).toLocaleString('id-ID')
@@ -70,24 +71,35 @@ export default function ManagerDashboard() {
     const endInclusive = new Date(endDate); endInclusive.setHours(23, 59, 59, 999)
     const startInclusive = new Date(startDate); startInclusive.setHours(0, 0, 0, 0)
 
-    const [{ data: reqs }, { data: quots }] = await Promise.all([
-      supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)')
-        .gte('submitted_at', startInclusive.toISOString()).lte('submitted_at', endInclusive.toISOString()),
-      // HANYA versi AKTIF dan bukan draft. Tanpa dua syarat ini, setiap kali
-      // estimator menyimpan ulang sebuah perhitungan, versi lamanya tetap
-      // terhitung -- satu order yang pernah direvisi dua kali muncul tiga kali.
-      // Diukur 15 Okt 2026: 48 quotation ber-status deal, padahal yang aktif
-      // cuma 25; 23 sisanya versi mati. Yang ikut salah bukan cuma jumlah Deal
-      // tapi juga Total Nilai Deal, karena selling_price versi mati ikut
-      // dijumlahkan. Sales dan Estimator sudah menyaring keduanya sejak awal,
-      // jadi inilah yang membuat angka Manager tidak pernah cocok dengan mereka.
-      supabase.from('quotations').select('*, requests(id, request_number, customer_name, product_type, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
-        .eq('is_active', true).eq('is_draft', false)
-        .gte('created_at', startInclusive.toISOString()).lte('created_at', endInclusive.toISOString())
-        .eq('is_active', true).eq('is_draft', false),
-    ])
-    setRequests(reqs || [])
-    setQuotations(quots || [])
+    // ambilSemua, bukan satu permintaan biasa: PostgREST berhenti di 1.000 baris
+    // tanpa memberi tanda apa pun. Terbukti 15 Okt 2026 -- 1.585 quotation cocok
+    // dengan filter di bawah, yang terkirim 1.000, dan dari potongan itu
+    // dashboard menampilkan 17 Deal senilai Rp 897.356.541 padahal yang
+    // sebenarnya 25 Deal. Tidak ada error, tidak ada gejala; cuma angka yang
+    // salah di layar. Inilah penyebab jumlah Deal di Manager tidak pernah cocok
+    // dengan Sales dan Estimator, BUKAN penyaringan is_active (itu memang sudah
+    // ada sejak awal) dan bukan rentang tanggalnya.
+    //
+    // Tabel requests saat itu 997 baris -- tiga lagi dan query di atasnya ikut
+    // terpotong dengan cara yang sama.
+    let reqs = [], quots = []
+    try {
+      ;[reqs, quots] = await Promise.all([
+        ambilSemua(() => supabase.from('requests').select('*, profiles!requests_sales_id_fkey(full_name)')
+          .gte('submitted_at', startInclusive.toISOString()).lte('submitted_at', endInclusive.toISOString())),
+        // is_active + bukan draft: supaya versi perhitungan yang sudah
+        // digantikan estimator tidak ikut terhitung.
+        ambilSemua(() => supabase.from('quotations').select('*, requests(id, request_number, customer_name, product_type, quantity, submitted_at, sales_id, profiles!requests_sales_id_fkey(full_name))')
+          .gte('created_at', startInclusive.toISOString()).lte('created_at', endInclusive.toISOString())
+          .eq('is_active', true).eq('is_draft', false)),
+      ])
+    } catch (e) {
+      // Lebih baik berteriak daripada diam-diam menampilkan angka separuh --
+      // persis kesalahan yang sedang diperbaiki di sini.
+      alert('Gagal memuat data dashboard: ' + (e?.message || e) + '\nAngka di layar bisa tidak lengkap, muat ulang halaman.')
+    }
+    setRequests(reqs)
+    setQuotations(quots)
     setLoading(false)
   }
 

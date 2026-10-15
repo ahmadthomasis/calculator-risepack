@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import { ambilSemua } from '../lib/ambilSemua'
 import FilterTanggal, { dalamRentang } from '../components/FilterTanggal'
 
 const STATUS_LABEL = { pending:'Menunggu', in_progress:'Dikerjakan', done:'Selesai', cancelled:'Dibatalkan' }
@@ -95,12 +96,20 @@ export default function EstimatorQueue() {
   }, [])
 
   async function fetchRequests() {
-    const { data } = await supabase
-      .from('requests')
-      .select('*, profiles!requests_sales_id_fkey(full_name), quotations(id, deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, needs_revision, revision_note, revision_requested_at, kode_order, cost_source, vendor_name, price_per_unit, quantity)')
-      .order('priority', { ascending: false })
-      .order('submitted_at', { ascending: true })
-    setRequests(data || [])
+    // ambilSemua: lihat catatan di src/lib/ambilSemua.js. Tabel requests sudah
+    // 997 baris per 15 Okt 2026 -- tiga lagi dan antrean ini mulai kehilangan
+    // baris tanpa pesan apa pun.
+    let data = []
+    try {
+      data = await ambilSemua(() => supabase
+        .from('requests')
+        .select('*, profiles!requests_sales_id_fkey(full_name), quotations(id, deal_status, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, needs_revision, revision_note, revision_requested_at, kode_order, cost_source, vendor_name, price_per_unit, quantity)')
+        .order('priority', { ascending: false })
+        .order('submitted_at', { ascending: true }))
+    } catch (e) {
+      alert('Gagal memuat antrean: ' + (e?.message || e) + '\nDaftar di layar bisa tidak lengkap, muat ulang halaman.')
+    }
+    setRequests(data)
   }
 
   // Kirim ke Purchasing — sebelumnya hanya ada di ManagerDashboard, jadi

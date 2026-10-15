@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import { ambilSemua } from '../lib/ambilSemua'
 import KodeOrderPicker from '../components/KodeOrderPicker'
 import FilterTanggal, { dalamRentang } from '../components/FilterTanggal'
 
@@ -137,11 +138,20 @@ export default function SalesDashboard() {
   }, [])
 
   async function fetchRequests() {
-    const { data } = await supabase
-      .from('requests')
-      .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name, vendor_price_per_pcs, kode_order, deal_price_source)')
-      .order('submitted_at', { ascending: false })
-    setRequests(data || [])
+    // ambilSemua: PostgREST berhenti di 1.000 baris tanpa memberi tanda apa pun.
+    // Tabel requests sudah 997 baris per 15 Okt 2026, jadi halaman ini tinggal
+    // tiga request lagi dari mulai menyembunyikan data diam-diam -- persis yang
+    // sudah terjadi di Dashboard Manager hari itu.
+    let data = []
+    try {
+      data = await ambilSemua(() => supabase
+        .from('requests')
+        .select('*, quotations(id, quantity, deal_status, selling_price, price_per_unit, updated_at, is_draft, is_active, purchasing_status, purchasing_notes, cost_source, vendor_name, vendor_price_per_pcs, kode_order, deal_price_source)')
+        .order('submitted_at', { ascending: false }))
+    } catch (e) {
+      alert('Gagal memuat request: ' + (e?.message || e) + '\nDaftar di layar bisa tidak lengkap, muat ulang halaman.')
+    }
+    setRequests(data)
 
     const { data: profs } = await supabase.from('profiles').select('id, full_name')
     setNames(Object.fromEntries((profs || []).map(p => [p.id, p.full_name])))
