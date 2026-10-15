@@ -13,11 +13,28 @@ const COL_ERP = '#FEF9C3'      // kuning - dari ERP
 const COL_HPP = '#DBEAFE'      // biru - HPP Sales (estimator)
 const COL_COGS = '#FDEBD3'     // krem - COGS Proyeksi (purchasing)
 
-// Order dengan Tanggal FAW sebelum tanggal ini tidak perlu dipantau lagi -
-// dibuang dari query supaya data yang ditarik & ditabelkan lebih ringan.
-// HARUS SAMA dengan FAW_CUTOFF di apps_script_erp_sync.gs (script sync
-// ERP -> Supabase) -- kalau salah satu diubah, update juga yang satunya.
-const FAW_CUTOFF = '2026-09-01'
+// Cakupan data ditentukan di SATU tempat: ERP_SYNC_FAW_CUTOFF di ErpSync.gs,
+// yang sejak 15 Okt 2026 menarik FAW mulai 1 Okt 2026 DITAMBAH order lama yang
+// masih jalan (sudah ditandai kode order sales atau sudah diisi purchasing).
+// Jadi tabel erp_orders sudah pas isinya dan halaman ini tidak perlu menyaring
+// apa-apa lagi.
+//
+// KENAPA MASIH ADA PENJAGA DI BAWAH -- INI SEMENTARA, BUKAN ATURAN CAKUPAN.
+// Ada script Apps Script ASING (di akun orang lain, lihat
+// supabase/erp_orders_blokir_delete_migration.sql) yang tiap menit :09 dan :39
+// meng-upsert ~975 baris ERP lama ke tabel ini. DELETE-nya sudah diblokir dan
+// nama_vendor sudah aman, tapi INSERT-nya tidak bisa dicegah dari sini. Prune
+// sync kita baru membuangnya di menit :19/:49, jadi ada jendela ~10 menit tiap
+// setengah jam di mana tabel berisi 975 baris, bukan ~83.
+//
+// Diukur 15 Okt 2026 05:10 UTC saat jendela itu: 975 baris, 900 di antaranya
+// Deal dengan FAW sebelum Oktober, dan cuma 8 yang benar-benar masih jalan.
+// Tanpa penjaga, 892 order mati muncul sebagai "gap" di halaman ini.
+//
+// HAPUS KONSTANTA + FILTERNYA begitu script asing itu mati: tabelnya sendiri
+// sudah jadi sumber kebenaran, dan penjaga per tanggal ini cuma menduplikasi
+// aturan yang sudah ada di ErpSync.gs.
+const FAW_PELINDUNG = '2026-10-01'
 
 // Status Pengisian: gap yang perlu dikejar. Kosong (tidak ada yang dicentang) = tampilkan semua.
 const PENGISIAN_OPTIONS = [
@@ -119,16 +136,15 @@ export default function DashboardPantau() {
   async function fetchAll() {
     setLoading(true)
     try {
-      // Basis data = SEMUA order "Deal" di ERP dengan Tanggal FAW >= FAW_CUTOFF
-      // (bukan cuma yang sudah diisi di Calculator Risepack) - biar yang belum
-      // diisi kelihatan sebagai gap, bukan malah hilang dari daftar. Order FAW
-      // lama dibuang di level query biar data yang ditarik lebih ringan.
+      // Basis data = SEMUA order "Deal" yang ada di erp_orders (bukan cuma yang
+      // sudah diisi di Calculator Risepack) - biar yang belum diisi kelihatan
+      // sebagai gap, bukan malah hilang dari daftar. Perampingannya dilakukan
+      // di script sync, bukan di sini; lihat catatan di atas.
       let erpRows = []
       for (let from = 0; ; from += 1000) {
         const { data, error: eErr } = await supabase
           .from('erp_orders').select('*')
           .eq('status_deal', 'Deal')
-          .gte('tgl_faw', FAW_CUTOFF)
           .range(from, from + 999)
         if (eErr) throw eErr
         erpRows = erpRows.concat(data || [])
@@ -137,7 +153,8 @@ export default function DashboardPantau() {
       const erpBySko = Object.fromEntries(erpRows.map(r => [r.sko, r]))
       const skoList = Object.keys(erpBySko)
 
-      // Cuma tarik quotations buat Kode Order yang lolos filter FAW di atas.
+      // Tarik quotations untuk semua Kode Order yang ada di ERP. Hasilnya juga
+      // yang menentukan order lama mana yang masih jalan (lihat dalamCakupan).
       let quotations = []
       for (let i = 0; i < skoList.length; i += 50) {
         const chunk = skoList.slice(i, i + 50)
@@ -177,7 +194,27 @@ export default function DashboardPantau() {
         grouped[key].cogsProyeksi += purchasingTotalWithFallback(q, compMap)
       })
 
-      const result = skoList.map(key => {
+      // Penjaga sementara (lihat catatan FAW_PELINDUNG di atas). Syaratnya
+      // sengaja memakai `grouped`, BUKAN tanggal saja: order lama yang sudah
+      // ditandai Deal punya quotation, jadi ia lolos berapa pun umur FAW-nya --
+      // termasuk yang FAW-nya kosong. Yang dibuang hanya order pra-Oktober yang
+      // memang tidak tersentuh siapa pun, persis yang diputuskan keluar dari
+      // cakupan.
+      //
+      // `grouped` dibangun dari quotations dengan deal_status = 'deal', dan itu
+      // disengaja: SAMA dengan syarat erpSyncKodeOrderTerbuka_() di ErpSync.gs.
+      // Sampai 15 Okt 2026 dua sisi ini sempat berbeda -- sync cuma memeriksa
+      // kode_order terisi, jadi ia menarik order ber-deal_status 'quoted' dan
+      // 'no_deal' yang halaman ini sembunyikan. Akibatnya jumlah baris di tabel
+      // dan di layar tidak pernah cocok. Kalau salah satu sisi diubah, UBAH
+      // KEDUANYA.
+      const dalamCakupan = key => {
+        const faw = erpBySko[key]?.tgl_faw
+        if (faw && faw >= FAW_PELINDUNG) return true
+        return !!grouped[key]
+      }
+
+      const result = skoList.filter(dalamCakupan).map(key => {
         const erp = erpBySko[key] || null
         const g = grouped[key] || null
         // Pengerjaan: langsung dari data ERP (nama_vendor), bukan dari
