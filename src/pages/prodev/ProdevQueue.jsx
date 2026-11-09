@@ -6,6 +6,7 @@ import {
   FORM_TYPE_SHORT, FORM_TYPE_LABEL, STATUS_JASA_LABEL,
   deriveStatus, STATUS_LABEL, STATUS_COLOR,
   statusWaktu, WAKTU_COLOR, fmtDate, todayStr,
+  bandingAntrian, nomorAntrian,
   templateUrlFor, PRODEV_BUCKET, DESIGN_FILE_ACCEPT, fileEntry, fileNameFromUrl, displayCustomer,
 } from '../../lib/prodev'
 
@@ -331,6 +332,8 @@ export default function ProdevQueue() {
     .map(([id, n]) => ({ id, name: names[id] || '—', n }))
     .sort((a, b) => b.n - a.n)
 
+  const antrian = nomorAntrian(orders)
+
   const filtered = orders
     .filter(o => {
       const st = deriveStatus(o)
@@ -355,6 +358,13 @@ export default function ProdevQueue() {
         (o.innersales_name || '').toLowerCase().includes(q) ||
         (o.rsp_number || '').toLowerCase().includes(q)
       )
+    })
+    // Tahap Layout di atas, lalu Rakit, lalu sisanya; di dalam tahap ikut nomor antrian.
+    .sort((a, b) => {
+      const rank = { layout: 0, rakit: 1 }
+      const ra = rank[deriveStatus(a)] ?? 2, rb = rank[deriveStatus(b)] ?? 2
+      if (ra !== rb) return ra - rb
+      return ra < 2 ? bandingAntrian(a, b) : 0
     })
 
   const isManager     = profile?.role === 'manager'
@@ -440,13 +450,13 @@ export default function ProdevQueue() {
         <div style={{ overflow:'auto', maxHeight:'62vh' }}>
           <table style={{ width:'100%', borderCollapse:'collapse', minWidth:1150 }}>
             <thead><tr>
-              {['Tipe','Customer','Produk','Innersales','Deadline','Layouter','Status','Selesai Layout','Selesai Rakit','Ket. Waktu','Source','Dummy Final','Aksi'].map(h => (
+              {['Urutan','Tipe','Customer','Produk','Innersales','Deadline','Layouter','Status','Selesai Layout','Selesai Rakit','Ket. Waktu','Source','Dummy Final','Aksi'].map(h => (
                 <th key={h} style={{ ...s.th, position:'sticky', top:0, background:'#fff', zIndex:1 }}>{h}</th>
               ))}
             </tr></thead>
             <tbody>
               {filtered.length === 0 && (
-                <tr><td colSpan={12} style={{ ...s.td, textAlign:'center', color:'#9ca3af', padding:30 }}>Tidak ada order.</td></tr>
+                <tr><td colSpan={14}style={{ ...s.td, textAlign:'center', color:'#9ca3af', padding:30 }}>Tidak ada order.</td></tr>
               )}
               {filtered.map(o => {
                 const st      = deriveStatus(o)
@@ -456,6 +466,28 @@ export default function ProdevQueue() {
                 const lewat   = !o.tanggal_selesai_rakit && o.deadline && todayStr() > o.deadline
                 return (
                   <tr key={o.id} style={{ opacity: busy ? 0.5 : 1, background: lewat ? '#fef2f2' : 'transparent' }}>
+                    <td style={{ ...s.td, whiteSpace:'nowrap' }}>
+                      {antrian[o.id] ? (
+                        <>
+                          <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                            <span style={{
+                              display:'inline-flex', alignItems:'center', justifyContent:'center', minWidth:30, height:30, borderRadius:15,
+                              fontWeight:700, fontSize:14, padding:'0 6px', boxSizing:'border-box',
+                              background: antrian[o.id].no === 1 ? STATUS_COLOR[st] : '#fff',
+                              color: antrian[o.id].no === 1 ? '#fff' : STATUS_COLOR[st],
+                              border: `2px solid ${STATUS_COLOR[st]}`,
+                            }} title={`Antrian ${st === 'layout' ? 'Layout' : 'Rakit'} ke-${antrian[o.id].no} dari ${antrian[o.id].total} (deadline terdekat dulu, lalu yang masuk duluan)`}>
+                              {antrian[o.id].no}
+                            </span>
+                            {antrian[o.id].no === 1 && <span style={{ fontSize:10.5, fontWeight:700, color:STATUS_COLOR[st] }}>Kerjakan dulu</span>}
+                          </div>
+                          <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:4 }}>
+                            {st === 'layout' ? 'Layout' : 'Rakit'} · masuk {fmtDate(o.tanggal_pengajuan || o.created_at)}
+                            {o.created_at && <> {new Date(o.created_at).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' })}</>}
+                          </div>
+                        </>
+                      ) : <span style={{ color:'#d1d5db' }}>—</span>}
+                    </td>
                     <td style={s.td}><span style={s.badge(o.form_type === 'fps' ? C.orange : '#1251A3')}>{FORM_TYPE_SHORT[o.form_type]}</span></td>
                     <td style={{ ...s.td, fontWeight:600 }}>
                       {o.customer_name}
