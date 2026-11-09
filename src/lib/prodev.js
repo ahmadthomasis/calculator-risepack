@@ -47,16 +47,71 @@ export function bandingAntrian(a, b) {
   return String(a.id).localeCompare(String(b.id))
 }
 
-// Nomor antrian per tahap ('layout' / 'rakit'), dihitung dari SEMUA order
-// sebelum filter, supaya "#1" sama di layar semua orang.
-// Hasil: { [id]: { no, total } }
+// ── Antrian bersama yang diatur innersales ──────────────────────────────────
+// Satu antrian per layouter untuk tahap Layout, satu antrian bersama untuk
+// tahap Rakit. Urutan manual (urutan_layout / urutan_rakit, hasil geseran
+// innersales) menang; order yang belum pernah digeser ditaruh di bawahnya,
+// diurutkan otomatis lewat bandingAntrian.
+export const kolomUrutan = (tahap) => (tahap === 'layout' ? 'urutan_layout' : 'urutan_rakit')
+
+export function kunciAntrian(o) {
+  const tahap = deriveStatus(o)
+  if (tahap === 'layout') return `layout:${o.layouter_id || '-'}`
+  if (tahap === 'rakit')  return 'rakit'
+  return null
+}
+
+function bandingManual(kolom) {
+  return (a, b) => {
+    const ma = a[kolom], mb = b[kolom]
+    const ada = (v) => v !== null && v !== undefined
+    if (ada(ma) && ada(mb) && ma !== mb) return ma - mb
+    if (ada(ma) !== ada(mb)) return ada(ma) ? -1 : 1
+    return bandingAntrian(a, b)
+  }
+}
+
+// Daftar order per antrian, sudah terurut. Hasil: { [kunci]: [order, ...] }
+export function susunAntrian(orders) {
+  const grup = {}
+  for (const o of orders) {
+    const k = kunciAntrian(o)
+    if (!k) continue
+    ;(grup[k] ||= []).push(o)
+  }
+  for (const k of Object.keys(grup)) {
+    grup[k].sort(bandingManual(kolomUrutan(k.startsWith('layout') ? 'layout' : 'rakit')))
+  }
+  return grup
+}
+
+// Nomor antrian tiap order, dihitung dari SEMUA order sebelum filter supaya
+// "#1" sama di layar semua orang. Hasil: { [id]: { no, total, kunci } }
 export function nomorAntrian(orders) {
   const out = {}
-  for (const tahap of ['layout', 'rakit']) {
-    const list = orders.filter(o => deriveStatus(o) === tahap).sort(bandingAntrian)
-    list.forEach((o, i) => { out[o.id] = { no: i + 1, total: list.length } })
+  const grup = susunAntrian(orders)
+  for (const [kunci, list] of Object.entries(grup)) {
+    list.forEach((o, i) => { out[o.id] = { no: i + 1, total: list.length, kunci } })
   }
   return out
+}
+
+// Pindahkan satu order ke posisi baru (0-based) di antriannya. Mengembalikan
+// patch yang perlu disimpan: seluruh antrian itu dinomori ulang 1..n supaya
+// urutan yang terlihat sekarang terkunci. Hanya baris yang nilainya berubah.
+export function rencanaGeser(orders, id, posisiBaru) {
+  const o = orders.find(x => x.id === id)
+  const kunci = o && kunciAntrian(o)
+  if (!kunci) return []
+  const kolom = kolomUrutan(kunci.startsWith('layout') ? 'layout' : 'rakit')
+  const list = [...susunAntrian(orders)[kunci]]
+  const dari = list.findIndex(x => x.id === id)
+  const ke = Math.max(0, Math.min(list.length - 1, posisiBaru))
+  if (dari === ke) return []
+  list.splice(ke, 0, list.splice(dari, 1)[0])
+  return list
+    .map((x, i) => ({ id: x.id, kolom, nilai: i + 1, lama: x[kolom] }))
+    .filter(p => p.lama !== p.nilai)
 }
 
 export const STATUS_LABEL = {

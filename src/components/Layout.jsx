@@ -68,6 +68,14 @@ const BoxIcon = ({ active }) => (
   </svg>
 )
 
+const QueueIcon = ({ active }) => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M10 6h11" /><path d="M10 12h11" /><path d="M10 18h11" />
+    <path d="M4 6h1v4" /><path d="M4 10h2" />
+    <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+  </svg>
+)
+
 const TemplateIcon = ({ active }) => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={active ? '#fff' : 'rgba(255,255,255,0.55)'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M12 2 2 7l10 5 10-5-10-5Z" />
@@ -152,6 +160,9 @@ export default function Layout({ children, title, beforeNavigate }) {
           // Menu Prodev: hanya untuk sales yang ditandai innersales
           ...(profile?.role === 'sales' && profile?.is_innersales
             ? [{ path:'/prodev', label:'Prodev', Icon: BoxIcon }] : []),
+          // Antrian Prodev: innersales yang menentukan urutan pengerjaan
+          ...(profile?.role === 'sales' && profile?.is_innersales
+            ? [{ path:'/prodev-queue', label:'Antrian', Icon: QueueIcon }] : []),
           // Template Library: prodev, innersales, & manager
           ...((profile?.role === 'prodev' || profile?.role === 'manager' || (profile?.role === 'sales' && profile?.is_innersales))
             ? [{ path:'/prodev/templates', label:'Template', Icon: TemplateIcon }] : []),
@@ -162,7 +173,7 @@ export default function Layout({ children, title, beforeNavigate }) {
           ...sidebarItems,
         ].map(item => {
           const active = item.path === '/prodev'
-            ? (location.pathname.startsWith('/prodev') && location.pathname !== '/prodev/templates')
+            ? (location.pathname.startsWith('/prodev/') || location.pathname === '/prodev') && location.pathname !== '/prodev/templates'
             : location.pathname === item.path
           const { Icon } = item
           return (

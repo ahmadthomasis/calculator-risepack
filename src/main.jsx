@@ -46,6 +46,7 @@ function RoleRouter() {
           {profile.is_innersales && (
             <>
               <Route path="/prodev" element={<ProdevList />} />
+              <Route path="/prodev-queue" element={<ProdevQueue />} />
               <Route path="/prodev/new/:formType" element={<ProdevForm />} />
               <Route path="/prodev/edit/:id" element={<ProdevForm />} />
               <Route path="/prodev/revisi/:revisiId" element={<ProdevForm />} />
