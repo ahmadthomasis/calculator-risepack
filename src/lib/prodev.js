@@ -31,6 +31,34 @@ export function deriveStatus(o) {
   return 'selesai'
 }
 
+// ── Urutan antrian: mana yang dikerjakan duluan ─────────────────────────────
+// Deadline terdekat dulu (tanpa deadline paling belakang); deadline sama →
+// yang masuk duluan (tanggal pengajuan, lalu jam dibuat). id sebagai pemutus
+// seri terakhir supaya urutannya selalu pasti, tidak loncat-loncat.
+export function bandingAntrian(a, b) {
+  const da = a.deadline ? String(a.deadline).slice(0, 10) : '9999-12-31'
+  const db = b.deadline ? String(b.deadline).slice(0, 10) : '9999-12-31'
+  if (da !== db) return da < db ? -1 : 1
+  const pa = String(a.tanggal_pengajuan || '').slice(0, 10)
+  const pb = String(b.tanggal_pengajuan || '').slice(0, 10)
+  if (pa !== pb) return pa < pb ? -1 : 1
+  const ca = a.created_at || '', cb = b.created_at || ''
+  if (ca !== cb) return ca < cb ? -1 : 1
+  return String(a.id).localeCompare(String(b.id))
+}
+
+// Nomor antrian per tahap ('layout' / 'rakit'), dihitung dari SEMUA order
+// sebelum filter, supaya "#1" sama di layar semua orang.
+// Hasil: { [id]: { no, total } }
+export function nomorAntrian(orders) {
+  const out = {}
+  for (const tahap of ['layout', 'rakit']) {
+    const list = orders.filter(o => deriveStatus(o) === tahap).sort(bandingAntrian)
+    list.forEach((o, i) => { out[o.id] = { no: i + 1, total: list.length } })
+  }
+  return out
+}
+
 export const STATUS_LABEL = {
   layout:    'Proses Layout',
   rakit:     'Proses Rakit',
