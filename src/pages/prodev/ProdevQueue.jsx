@@ -6,7 +6,7 @@ import {
   FORM_TYPE_SHORT, FORM_TYPE_LABEL, STATUS_JASA_LABEL,
   deriveStatus, STATUS_LABEL, STATUS_COLOR,
   statusWaktu, WAKTU_COLOR, fmtDate, todayStr,
-  bandingAntrian, nomorAntrian,
+  nomorAntrian, rencanaGeser,
   templateUrlFor, PRODEV_BUCKET, DESIGN_FILE_ACCEPT, fileEntry, fileNameFromUrl, displayCustomer,
 } from '../../lib/prodev'
 
@@ -302,6 +302,26 @@ export default function ProdevQueue() {
     setUploadingResult(false)
   }
 
+  // ── Innersales/manager: geser order di antrian (ke posisi 0-based) ──
+  // Seluruh antrian dinomori ulang supaya urutan yang terlihat terkunci.
+  // Lokal diubah dulu biar terasa instan; realtime lalu menyamakan dengan DB.
+  async function geser(o, posisiBaru) {
+    const patch = rencanaGeser(orders, o.id, posisiBaru)
+    if (!patch.length) return
+    setBusyId(o.id)
+    const nilaiBaru = Object.fromEntries(patch.map(p => [p.id, p]))
+    setOrders(prev => prev.map(x => nilaiBaru[x.id] ? { ...x, [nilaiBaru[x.id].kolom]: nilaiBaru[x.id].nilai } : x))
+    const hasil = await Promise.all(patch.map(p =>
+      supabase.from('prodev_orders').update({ [p.kolom]: p.nilai }).eq('id', p.id)))
+    const gagal = hasil.find(r => r.error)
+    if (gagal) {
+      alert('Gagal menyimpan urutan: ' + gagal.error.message +
+        '\n(Pastikan supabase/prodev_urutan_antrian_migration.sql sudah dijalankan.)')
+      fetchOrders()
+    }
+    setBusyId(null)
+  }
+
   // ── Hapus satu file (hasil layout) ──
   async function deleteFile(o, field, i) {
     if (!confirm('Hapus file ini?')) return
@@ -359,17 +379,24 @@ export default function ProdevQueue() {
         (o.rsp_number || '').toLowerCase().includes(q)
       )
     })
-    // Tahap Layout di atas, lalu Rakit, lalu sisanya; di dalam tahap ikut nomor antrian.
+    // Tahap Layout di atas (dikelompokkan per layouter), lalu Rakit, lalu sisanya;
+    // di dalam satu antrian ikut nomor antrian.
     .sort((a, b) => {
       const rank = { layout: 0, rakit: 1 }
       const ra = rank[deriveStatus(a)] ?? 2, rb = rank[deriveStatus(b)] ?? 2
       if (ra !== rb) return ra - rb
-      return ra < 2 ? bandingAntrian(a, b) : 0
+      if (ra === 2) return 0
+      if (ra === 0 && a.layouter_id !== b.layouter_id) {
+        return (names[a.layouter_id] || '~').localeCompare(names[b.layouter_id] || '~')
+      }
+      return antrian[a.id].no - antrian[b.id].no
     })
 
   const isManager     = profile?.role === 'manager'
   const isLayouter    = profile?.role === 'prodev'
   const isSampleMaker = profile?.role === 'sample_maker'
+  const isInnersales  = profile?.role === 'sales' && profile?.is_innersales
+  const bisaAturUrutan = isManager || isInnersales
 
   return (
     <Layout title="Antrian Prodev">
@@ -428,7 +455,7 @@ export default function ProdevQueue() {
               {makerRanking.map(m => <option key={m.id} value={m.id}>{m.name} ({m.n})</option>)}
             </select>
           )}
-          {!isManager && (
+          {(isLayouter || isSampleMaker) && (
             <label style={{ display:'flex', alignItems:'center', gap:6, fontSize:12.5, color:C.brown, cursor:'pointer' }}>
               <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)} style={{ cursor:'pointer' }} />
               Tugas saya saja
@@ -476,15 +503,31 @@ export default function ProdevQueue() {
                               background: antrian[o.id].no === 1 ? STATUS_COLOR[st] : '#fff',
                               color: antrian[o.id].no === 1 ? '#fff' : STATUS_COLOR[st],
                               border: `2px solid ${STATUS_COLOR[st]}`,
-                            }} title={`Antrian ${st === 'layout' ? 'Layout' : 'Rakit'} ke-${antrian[o.id].no} dari ${antrian[o.id].total} (deadline terdekat dulu, lalu yang masuk duluan)`}>
+                            }} title={`Antrian ${st === 'layout' ? `layout ${names[o.layouter_id] || ''}` : 'rakit'} ke-${antrian[o.id].no} dari ${antrian[o.id].total}`}>
                               {antrian[o.id].no}
                             </span>
                             {antrian[o.id].no === 1 && <span style={{ fontSize:10.5, fontWeight:700, color:STATUS_COLOR[st] }}>Kerjakan dulu</span>}
                           </div>
                           <div style={{ fontSize:10.5, color:'#9ca3af', marginTop:4 }}>
-                            {st === 'layout' ? 'Layout' : 'Rakit'} · masuk {fmtDate(o.tanggal_pengajuan || o.created_at)}
-                            {o.created_at && <> {new Date(o.created_at).toLocaleTimeString('id-ID', { hour:'2-digit', minute:'2-digit' })}</>}
+                            {st === 'layout' ? `Layout ${names[o.layouter_id] || ''}` : 'Rakit'} · {antrian[o.id].no}/{antrian[o.id].total}
                           </div>
+                          {bisaAturUrutan && (
+                            <div style={{ display:'flex', gap:4, marginTop:5 }}>
+                              {[
+                                ['⤒', 0, 'Jadikan no 1'],
+                                ['▲', antrian[o.id].no - 2, 'Naikkan satu'],
+                                ['▼', antrian[o.id].no, 'Turunkan satu'],
+                              ].map(([ikon, ke, judul]) => {
+                                const mati = busy || ke < 0 || ke >= antrian[o.id].total || ke === antrian[o.id].no - 1
+                                return (
+                                  <button key={ikon} title={judul} disabled={mati} onClick={() => geser(o, ke)}
+                                    style={{ ...s.btnGhost, padding:'2px 8px', fontSize:12, opacity: mati ? 0.35 : 1, cursor: mati ? 'default' : 'pointer' }}>
+                                    {ikon}
+                                  </button>
+                                )
+                              })}
+                            </div>
+                          )}
                         </>
                       ) : <span style={{ color:'#d1d5db' }}>—</span>}
                     </td>
