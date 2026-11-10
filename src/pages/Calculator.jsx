@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
+import { rambatkanPerubahan } from '../lib/rambatQty'
 import SalinOrderLama from '../components/SalinOrderLama'
 
 const fmt  = n => (n || 0).toLocaleString('id-ID')
@@ -225,6 +226,9 @@ export default function Calculator() {
   const [activeQty, setActiveQty]     = useState(null) // qty yang sedang dikerjakan estimator
   const [savedQtys, setSavedQtys]     = useState([])   // qty yang sudah punya quotation tersimpan
   const qtyCache = useRef({}).current                   // cache state per-qty di memori (tidak re-render saat diisi)
+  // Isi section saat qty aktif dibuka -- pembanding untuk rambatkanPerubahan.
+  const dasarQty = useRef(null)
+  const [infoRambat, setInfoRambat] = useState(null)    // { dari, jumlah } untuk banner di qty tujuan
 
   // Snapshot state terkini, dipakai di cleanup function useEffect supaya
   // tidak baca closure basi (cleanup tidak re-register tiap keystroke)
@@ -236,6 +240,13 @@ export default function Calculator() {
       hasVendorComparison, vendorName, vendorPricePerPcs,
     }
   })
+
+  // Snapshot "dasar" diambil setiap kali qty aktif berganti (loadAll / switchQty
+  // mengisi section dan activeQty dalam satu batch render).
+  useEffect(() => {
+    if (activeQty == null) return
+    dasarQty.current = { material, cetak, emboss, matProses, finishing, additional }
+  }, [activeQty]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const normGsm = (rows) => (rows || []).map(r => ({
     ...r,
@@ -844,6 +855,15 @@ export default function Calculator() {
   // Harga vendor per pcs × qty, murni untuk ditampilkan sebagai pembanding.
   const vendorTotal = activeQty ? num(vendorPricePerPcs) * activeQty : 0
 
+  // Qty tujuan setelah simpan: qty sesudahnya di daftar (walau sudah tersimpan,
+  // supaya manager yang mengoreksi bisa lanjut 2.000 → 3.000), lalu qty yang
+  // belum tersimpan. null = tidak ada lagi, selesai.
+  function qtyBerikutnya(saved) {
+    const i = qtyList.indexOf(activeQty)
+    if (i >= 0 && i < qtyList.length - 1) return qtyList[i + 1]
+    return qtyList.find(q => q !== activeQty && !saved.includes(q)) ?? null
+  }
+
   async function handleSave() {
     setSaving(true)
 
@@ -1040,13 +1060,27 @@ export default function Calculator() {
     // draft kosong saat navigate() dipanggil sebelum useEffect sempat jalan
     latestRef.current = { ...latestRef.current, savedQtys: newSavedQtys }
 
+    // Rambatkan nilai yang diubah di qty ini ke qty lain yang sudah punya isi.
+    // Qty yang belum pernah dibuka tidak perlu: saat dibuka ia diprefill dari qty pertama.
+    const sekarang = { material, cetak, emboss, matProses, finishing, additional }
+    const kenaRambat = {}
+    for (const q of qtyList) {
+      if (q === activeQty || !qtyCache[q]) continue
+      const { hasil, jumlah } = rambatkanPerubahan(dasarQty.current, sekarang, qtyCache[q])
+      if (jumlah > 0) { qtyCache[q] = hasil; kenaRambat[q] = jumlah }
+    }
+    dasarQty.current = sekarang
+
     const allDone = qtyList.every(q => newSavedQtys.includes(q))
-    if (allDone) {
+    const nextQty = qtyBerikutnya(newSavedQtys)
+    if (allDone && request?.status !== 'done') {
       await supabase.from('requests').update({ status:'done', completed_at: new Date().toISOString() }).eq('id', requestId)
+    }
+    if (nextQty == null) {
       navigate(queuePath)
     } else {
-      const nextQty = qtyList.find(q => !newSavedQtys.includes(q))
-      if (nextQty != null) switchQty(nextQty, newSavedQtys)
+      setInfoRambat(kenaRambat[nextQty] ? { dari: activeQty, jumlah: kenaRambat[nextQty] } : null)
+      await switchQty(nextQty, newSavedQtys)
     }
     setSaving(false)
   }
@@ -1185,7 +1219,7 @@ export default function Calculator() {
             return (
               <button
                 key={q}
-                onClick={() => switchQty(q)}
+                onClick={() => { setInfoRambat(null); switchQty(q) }}
                 style={{
                   padding:'10px 18px', borderRadius:8, fontSize:14, fontWeight:600, cursor:'pointer',
                   border: isActive ? `2px solid ${C.orange}` : `1px solid ${C.border}`,
@@ -1198,6 +1232,13 @@ export default function Calculator() {
               </button>
             )
           })}
+        </div>
+      )}
+
+      {infoRambat && (
+        <div style={{ marginBottom:20, padding:'10px 14px', background:'#eff6ff', border:'1px solid #bfdbfe', borderRadius:8, fontSize:13, color:'#1e40af', display:'flex', alignItems:'center', gap:10 }}>
+          <span>↻ {infoRambat.jumlah} nilai di qty ini ikut diganti mengikuti perubahan di {fmt(infoRambat.dari)} pcs. Cek lalu simpan.</span>
+          <button onClick={() => setInfoRambat(null)} style={{ marginLeft:'auto', background:'none', border:'none', color:'#1e40af', cursor:'pointer', fontSize:14 }}>✕</button>
         </div>
       )}
 
@@ -1759,10 +1800,11 @@ export default function Calculator() {
           </button>
           <button onClick={handleSave} disabled={saving} style={s.saveBtn}>
             {saving ? 'Menyimpan...' : (() => {
-              const remaining = qtyList.filter(q => q !== activeQty && !savedQtys.includes(q)).length
               if (qtyList.length <= 1) return '💾 Simpan & Selesai'
-              return remaining > 0
-                ? `💾 Simpan Qty ${fmt(activeQty)} & Lanjut`
+              const saved = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]
+              const next = qtyBerikutnya(saved)
+              return next != null
+                ? `💾 Simpan Qty ${fmt(activeQty)} & Lanjut ke ${fmt(next)}`
                 : `💾 Simpan Qty ${fmt(activeQty)} & Selesai Semua`
             })()}
           </button>
