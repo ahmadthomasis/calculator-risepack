@@ -1,10 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../lib/AuthContext'
 import Layout from '../components/Layout'
 import { ambilSemua } from '../lib/ambilSemua'
 import FilterTanggal, { dalamRentang } from '../components/FilterTanggal'
+import { useStateTersimpan } from '../lib/useStateTersimpan'
 
 const STATUS_LABEL = { pending:'Menunggu', in_progress:'Dikerjakan', done:'Selesai', cancelled:'Dibatalkan' }
 const STATUS_COLOR = { pending:'#f59e0b', in_progress:'#2563eb', done:'#16a34a', cancelled:'#9ca3af' }
@@ -60,14 +61,20 @@ export default function EstimatorQueue() {
   // Dipakai untuk mencatat siapa yang mengirim ke purchasing.
   const { profile } = useAuth()
   const [requests, setRequests] = useState([])
-  const [filter, setFilter]     = useState('all')
   const [pulse, setPulse]       = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [salesFilter, setSalesFilter] = useState('all')
-  const [dealFilter,  setDealFilter]  = useState('all')
-  const [purchFilter, setPurchFilter] = useState('all')
-  const [tglDari, setTglDari]       = useState('')   // rentang tanggal, default: semua
-  const [tglSampai, setTglSampai]   = useState('')
+  // Filter & pencarian disimpan per tab browser, supaya setelah "Lihat"
+  // perhitungan lalu kembali, hasil pencarian (mis. "novi") tidak hilang.
+  const [filter, setFilter]           = useStateTersimpan('estq.filter', 'all')
+  const [searchTerm, setSearchTerm]   = useStateTersimpan('estq.cari', '')
+  const [salesFilter, setSalesFilter] = useStateTersimpan('estq.sales', 'all')
+  const [dealFilter,  setDealFilter]  = useStateTersimpan('estq.deal', 'all')
+  const [purchFilter, setPurchFilter] = useStateTersimpan('estq.purch', 'all')
+  const [tglDari, setTglDari]         = useStateTersimpan('estq.dari', '')   // rentang tanggal, default: semua
+  const [tglSampai, setTglSampai]     = useStateTersimpan('estq.sampai', '')
+  // Request yang terakhir dibuka: saat kembali, baris ini di-scroll ke tengah
+  // dan diberi garis biru supaya langsung lanjut ke baris berikutnya.
+  const [terakhirDibuka, setTerakhirDibuka] = useStateTersimpan('estq.terakhir', null)
+  const sudahLompat = useRef(false)
   const [lastSeen] = useState(() => localStorage.getItem(LAST_SEEN_KEY) || new Date(0).toISOString())
 
   useEffect(() => {
@@ -148,8 +155,21 @@ export default function EstimatorQueue() {
       // estimator sudah acknowledge revisi dengan mulai kerjakan ulang.
       spec_updated_at: null,
     }).eq('id', id)
+    bukaPerhitungan(id)
+  }
+
+  function bukaPerhitungan(id) {
+    setTerakhirDibuka(id)
     navigate(`/calculator/${id}`)
   }
+
+  // Sekali per kunjungan, setelah data termuat: lompat ke baris terakhir dibuka.
+  useEffect(() => {
+    if (sudahLompat.current || !terakhirDibuka || !requests.length) return
+    sudahLompat.current = true
+    const el = document.getElementById(`estq-row-${terakhirDibuka}`)
+    if (el) el.scrollIntoView({ block:'center' })
+  }, [requests, terakhirDibuka])
 
   async function cancelRequest(id) {
     if (!confirm('Batalkan request ini?')) return
@@ -385,7 +405,10 @@ export default function EstimatorQueue() {
               </td></tr>
             )}
             {filtered.map(r => (
-              <tr key={r.id} style={{ background: r.priority==='urgent' ? '#fff7ed' : 'transparent' }}>
+              <tr key={r.id} id={`estq-row-${r.id}`} style={{
+                background: r.priority==='urgent' ? '#fff7ed' : 'transparent',
+                boxShadow: r.id === terakhirDibuka ? 'inset 4px 0 0 #2563eb' : 'none',
+              }}>
                 <td style={s.td}>
                   <div style={{ fontFamily:'monospace', fontSize:12, color:'#6b7280' }}>{r.request_number}</div>
                   {r.priority==='urgent' && <div style={{ color:'#dc2626', fontSize:11, fontWeight:600, marginTop:2 }}>🔴 URGENT</div>}
@@ -578,7 +601,7 @@ export default function EstimatorQueue() {
                       <button style={s.btnGray} onClick={() => cancelRequest(r.id)}>Batalkan</button>
                     )}
                     {r.status === 'done' && (
-                      <button style={s.btnGray} onClick={() => navigate(`/calculator/${r.id}`)}>Lihat</button>
+                      <button style={s.btnGray} onClick={() => bukaPerhitungan(r.id)}>Lihat</button>
                     )}
                     {(() => {
                       // Tombol kirim hanya untuk perhitungan yang SUDAH final
