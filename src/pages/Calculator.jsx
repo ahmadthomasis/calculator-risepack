@@ -198,6 +198,8 @@ export default function Calculator() {
   const [request,  setRequest]  = useState(null)
   const [loading,  setLoading]  = useState(true)
   const [saving,   setSaving]   = useState(false)
+  // Centang "sudah dikejar" saat HPP masih di atas target. Direset tiap ganti qty.
+  const [targetDikejar, setTargetDikejar] = useState(false)
   const [margin,   setMargin]   = useState(15)
   const [dbMaterials, setDbMaterials] = useState([])
   const [dbMesin,     setDbMesin]     = useState([])
@@ -247,6 +249,8 @@ export default function Calculator() {
     if (activeQty == null) return
     dasarQty.current = { material, cetak, emboss, matProses, finishing, additional }
   }, [activeQty]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => { setTargetDikejar(false) }, [activeQty])
 
   const normGsm = (rows) => (rows || []).map(r => ({
     ...r,
@@ -855,6 +859,18 @@ export default function Calculator() {
   // Harga vendor per pcs × qty, murni untuk ditampilkan sebagai pembanding.
   const vendorTotal = activeQty ? num(vendorPricePerPcs) * activeQty : 0
 
+  // ── Target HPP per pcs (sebelum margin), satu per qty dari request sales ──
+  // request.target_prices sejajar dengan request.quantities (= qtyList).
+  const targetUntuk = (q) => {
+    const i = qtyList.indexOf(q)
+    const v = Array.isArray(request?.target_prices) ? Number(request.target_prices[i]) : 0
+    return v > 0 ? v : null
+  }
+  const target     = targetUntuk(activeQty)
+  const hppPerPcs  = activeQty ? total / activeQty : 0
+  const diAtasTarget = !!(target && total > 0 && hppPerPcs > target)
+  const terkunciTarget = diAtasTarget && !targetDikejar
+
   // Qty tujuan setelah simpan: qty sesudahnya di daftar (walau sudah tersimpan,
   // supaya manager yang mengoreksi bisa lanjut 2.000 → 3.000), lalu qty yang
   // belum tersimpan. null = tidak ada lagi, selesai.
@@ -865,6 +881,10 @@ export default function Calculator() {
   }
 
   async function handleSave() {
+    if (terkunciTarget) {
+      alert(`HPP ${idr(hppPerPcs)}/pcs masih di atas target ${idr(target)}/pcs.\nKejar dulu, atau centang "Sudah saya kejar" kalau memang tidak bisa lebih rendah.`)
+      return
+    }
     setSaving(true)
 
     // URUTAN AMAN: INSERT dulu dengan timestamp, baru nonaktifkan semua baris
@@ -883,6 +903,8 @@ export default function Calculator() {
       cost_source: hasVendorComparison ? 'vendor' : 'internal',
       vendor_name: hasVendorComparison ? (vendorName || null) : null,
       vendor_price_per_pcs: hasVendorComparison ? (num(vendorPricePerPcs) || null) : null,
+      target_hpp: target,
+      target_dikejar: diAtasTarget,
     }).select('id').maybeSingle()
 
     if (error || !inserted) {
@@ -1106,6 +1128,7 @@ export default function Calculator() {
       <div style={{ ...s.card, borderLeft:`4px solid ${C.orange}`, padding:'16px 20px' }}>
         <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(150px,1fr))', gap:12 }}>
           {[['Customer',request.customer_name],['Produk',request.product_type],['Qty Diminta',qtyList.map(fmt).join(' / ')],
+            ['Target HPP/pcs', qtyList.some(q => targetUntuk(q)) ? qtyList.map(q => targetUntuk(q) ? idr(targetUntuk(q)) : '—').join(' / ') : '— (request lama, tanpa target)'],
             ['Ukuran',request.product_size||'—'],['Luas Permukaan (m²)',request.plano_size||'—'],
             ['Material',request.material_spec||'—'],
             ['Print',request.print_spec||'—'],['Finishing',request.finishing_spec||'—']
@@ -1704,6 +1727,19 @@ export default function Calculator() {
             <div style={{ display:'flex', justifyContent:'space-between', padding:'10px 0', fontSize:14, fontWeight:700, color:C.dark, borderTop:`2px solid ${C.border}`, marginTop:4 }}>
               <span>Total Modal</span><span>{idr(total)}</span>
             </div>
+            <div style={{ display:'flex', justifyContent:'space-between', padding:'4px 0', fontSize:13, color:C.dark }}>
+              <span>HPP per pcs</span><span style={{ fontFamily:'monospace', fontWeight:600 }}>{idr(hppPerPcs)}</span>
+            </div>
+            {target && (
+              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'8px 10px', marginTop:6, borderRadius:8, fontSize:13, fontWeight:600,
+                background: diAtasTarget ? '#fef2f2' : '#f0fdf4', color: diAtasTarget ? '#b91c1c' : '#15803d',
+                border: `1px solid ${diAtasTarget ? '#fecaca' : '#bbf7d0'}` }}>
+                <span>Target {idr(target)}/pcs</span>
+                <span>{total <= 0 ? '—' : diAtasTarget
+                  ? `▲ ${idr(hppPerPcs - target)} di atas target`
+                  : `✓ ${idr(target - hppPerPcs)} di bawah target`}</span>
+              </div>
+            )}
           </div>
           <div>
             <div style={{ fontSize:14, fontWeight:600, color:C.dark, marginBottom:12 }}>Harga Jual</div>
@@ -1794,11 +1830,27 @@ export default function Calculator() {
         )
       })()}
 
+        {diAtasTarget && (
+          <div style={{ marginTop:20, padding:'12px 16px', background:'#fef2f2', border:'1px solid #fecaca', borderRadius:10 }}>
+            <div style={{ fontSize:14, fontWeight:700, color:'#b91c1c' }}>
+              ⚠ HPP {idr(hppPerPcs)}/pcs masih di atas target {idr(target)}/pcs (selisih {idr(hppPerPcs - target)}/pcs)
+            </div>
+            <div style={{ fontSize:12.5, color:'#7f1d1d', marginTop:4 }}>
+              Coba kejar dulu target dari sales (bahan, proses, vendor). Kalau memang tidak bisa lebih rendah, centang di bawah supaya bisa disimpan.
+            </div>
+            <label style={{ display:'flex', alignItems:'center', gap:8, marginTop:10, fontSize:13.5, fontWeight:600, color:'#7f1d1d', cursor:'pointer' }}>
+              <input type="checkbox" checked={targetDikejar} onChange={e => setTargetDikejar(e.target.checked)} style={{ width:16, height:16, cursor:'pointer' }} />
+              Sudah saya kejar, memang tidak bisa lebih rendah
+            </label>
+          </div>
+        )}
         <div style={{ marginTop:24, display:'flex', gap:12, justifyContent:'flex-end' }}>
           <button onClick={() => navigate(queuePath)} style={{ padding:'10px 20px', background:'#fff', border:`1px solid ${C.border}`, borderRadius:8, fontSize:14, cursor:'pointer', color:C.dark }}>
             Kembali
           </button>
-          <button onClick={handleSave} disabled={saving} style={s.saveBtn}>
+          <button onClick={handleSave} disabled={saving || terkunciTarget}
+            title={terkunciTarget ? 'HPP masih di atas target — kejar dulu atau centang "Sudah saya kejar"' : ''}
+            style={{ ...s.saveBtn, ...(terkunciTarget ? { opacity:0.45, cursor:'not-allowed' } : {}) }}>
             {saving ? 'Menyimpan...' : (() => {
               if (qtyList.length <= 1) return '💾 Simpan & Selesai'
               const saved = savedQtys.includes(activeQty) ? savedQtys : [...savedQtys, activeQty]

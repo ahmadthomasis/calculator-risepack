@@ -97,7 +97,7 @@ const MAX_QTYS = 5
 
 const emptyForm = {
   customer_name:'', product_category:'Hardbox', product_type:'2 Piece Box',
-  quantities:[''], priority:'normal', product_size:'',
+  quantities:[''], target_prices:[''], priority:'normal', product_size:'',
   luas_permukaan:'', material_spec:'', print_spec:'',
   finishing:[], notes:'', image_urls:[],
 }
@@ -211,6 +211,7 @@ export default function SalesDashboard() {
       quantities: Array.isArray(r.quantities) && r.quantities.length > 0
         ? r.quantities.map(String)
         : (r.quantity ? [String(r.quantity)] : ['']),
+      target_prices: Array.isArray(r.target_prices) ? r.target_prices.map(v => v == null ? '' : String(v)) : [],
       priority: r.priority || 'normal',
       product_size: r.product_size || '',
       luas_permukaan: r.plano_size || '',
@@ -277,15 +278,25 @@ export default function SalesDashboard() {
 
   // Build payload dari form saat ini. Return null kalau qty tidak valid.
   function buildRequestPayload() {
-    const qtyNumbers = form.quantities.map(q => parseInt(q)).filter(q => !isNaN(q) && q > 0)
-    if (qtyNumbers.length === 0) {
+    // Qty dan target berpasangan per baris; baris qty kosong dibuang bersama targetnya.
+    const pasangan = form.quantities
+      .map((q, i) => ({ qty: parseInt(q), target: Number(String(form.target_prices?.[i] ?? '').replace(/[^\d.]/g, '')) }))
+      .filter(p => !isNaN(p.qty) && p.qty > 0)
+    if (pasangan.length === 0) {
       alert('Isi minimal 1 quantity yang valid.')
       return null
     }
+    const tanpaTarget = pasangan.filter(p => !(p.target > 0))
+    if (tanpaTarget.length > 0) {
+      alert('Target HPP per pcs wajib diisi untuk qty: ' + tanpaTarget.map(p => p.qty.toLocaleString('id-ID')).join(', '))
+      return null
+    }
+    const qtyNumbers = pasangan.map(p => p.qty)
     return {
       customer_name:  form.customer_name,
       product_type:   form.product_type,
       quantities:     qtyNumbers,
+      target_prices:  pasangan.map(p => p.target),
       quantity:       qtyNumbers[0],
       priority:       form.priority,
       product_size:   form.product_size,
@@ -564,7 +575,7 @@ export default function SalesDashboard() {
               </div>
 
               <div style={{ gridColumn:'1 / -1' }}>
-                <label style={s.label}>Quantity * (bisa lebih dari satu, contoh: 5.000 / 10.000 / 20.000 pcs)</label>
+                <label style={s.label}>Quantity & Target HPP per pcs * (bisa lebih dari satu qty, tiap qty wajib punya target)</label>
                 <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                   {form.quantities.map((q, i) => (
                     <div key={i} style={{ display:'flex', gap:8, alignItems:'center' }}>
@@ -577,11 +588,26 @@ export default function SalesDashboard() {
                           setForm({...form, quantities: next})
                         }}
                         required={i === 0}
-                        placeholder="contoh: 5000"
+                        placeholder="qty, contoh: 5000"
+                      />
+                      <span style={{ fontSize:12, color:'#6b7280', whiteSpace:'nowrap' }}>pcs · target</span>
+                      <input
+                        style={{ ...s.input, maxWidth:180 }}
+                        type="number" min="1" value={form.target_prices?.[i] ?? ''}
+                        onChange={e => {
+                          const next = [...(form.target_prices || [])]
+                          next[i] = e.target.value
+                          setForm({...form, target_prices: next})
+                        }}
+                        required
+                        placeholder="Rp/pcs sebelum margin"
+                        title="Target HPP per pcs (sebelum margin) yang harus dikejar estimator"
                       />
                       {form.quantities.length > 1 && (
                         <button type="button"
-                          onClick={() => setForm({...form, quantities: form.quantities.filter((_, idx) => idx !== i)})}
+                          onClick={() => setForm({...form,
+                            quantities: form.quantities.filter((_, idx) => idx !== i),
+                            target_prices: (form.target_prices || []).filter((_, idx) => idx !== i)})}
                           style={{ padding:'6px 10px', background:'#fff', border:'1px solid #fecaca', borderRadius:6, fontSize:12, cursor:'pointer', color:'#dc2626' }}>
                           ✕
                         </button>
@@ -590,7 +616,7 @@ export default function SalesDashboard() {
                   ))}
                   {form.quantities.length < MAX_QTYS && (
                     <button type="button"
-                      onClick={() => setForm({...form, quantities: [...form.quantities, '']})}
+                      onClick={() => setForm({...form, quantities: [...form.quantities, ''], target_prices: [...(form.target_prices || []), '']})}
                       style={{ alignSelf:'flex-start', padding:'6px 14px', background:'#fff7ed', color:C.orange, border:`1px solid ${C.border}`, borderRadius:6, fontSize:12, cursor:'pointer', fontWeight:500 }}>
                       + Tambah Quantity Lain
                     </button>
