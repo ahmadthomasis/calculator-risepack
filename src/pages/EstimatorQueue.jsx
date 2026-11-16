@@ -459,7 +459,17 @@ export default function EstimatorQueue() {
                     const qtys = Array.isArray(r.quantities) && r.quantities.length > 0
                       ? r.quantities
                       : (r.quantity ? [r.quantity] : [])
-                    return qtys.map(q => q.toLocaleString('id-ID')).join(' / ')
+                    const tg = Array.isArray(r.target_prices) ? r.target_prices : []
+                    return (
+                      <>
+                        {qtys.map(q => q.toLocaleString('id-ID')).join(' / ')}
+                        {tg.some(v => v > 0) && (
+                          <div style={{ fontSize:11, color:'#7c3aed', marginTop:3 }} title="Target HPP per pcs (sebelum margin)">
+                            target {tg.map(v => v > 0 ? 'Rp ' + Math.round(v).toLocaleString('id-ID') : '—').join(' / ')}
+                          </div>
+                        )}
+                      </>
+                    )
                   })()}
                 </td>
                 <td style={s.td}>
